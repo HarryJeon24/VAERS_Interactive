@@ -120,16 +120,29 @@ pip install -r backend/requirements.txt
 Create `VAERS_Interactive/.env`:
 
 ```env
-# Flask
-FLASK_ENV=development
-FLASK_DEBUG=1
+# Which year files to include (comma-separated)
+VAERS_DEV_YEARS=2016,2018,2023
 
-# Mongo
+# Sample sizes PER YEAR (join-safe by VAERS_ID)
+VAERS_DEV_N_RANDOM=10000
+VAERS_DEV_N_SERIOUS=2000
+
+# If true, merges years into one dev*.csv and adds YEAR column
+VAERS_DEV_COMBINE=true
+VAERS_DEV_PREFIX=dev
+
+# CSV streaming chunksize (bigger = faster, higher RAM)
+VAERS_DEV_CHUNKSIZE=200000
+
+# Optional: ensure these VAX_TYPEs have enough distinct VAERS_IDs
+# (comma-separated, can be blank)
+VAERS_DEV_ENSURE_VAX_TYPES=COVID19,FLU,TDAP
+VAERS_DEV_MIN_PER_VAX_TYPE=800
+VAERS_CSV_ENCODING=cp1252
+
 MONGO_URI=mongodb://localhost:27017
-MONGO_DB=vaers_interactive
+MONGO_DB=vaers_dev
 
-# Optional: dev settings
-# DEV_YEARS=2020,2021,2022,2023,2024,2025
 ```
 
 > If you use MongoDB Atlas, set `MONGO_URI` to the Atlas connection string.
