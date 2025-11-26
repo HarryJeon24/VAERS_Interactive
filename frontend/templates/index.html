@@ -1,0 +1,187 @@
+<!-- frontend/templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>VaxScope (Dev) — Signals</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">VS</div>
+      <div>
+        <div class="title">VaxScope</div>
+        <div class="subtitle">VAERS exploration (dev) • Signals table (PRR/ROR)</div>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="link" href="/api/health" target="_blank" rel="noreferrer">API Health</a>
+      <a class="link" href="/api/stats" target="_blank" rel="noreferrer">API Stats</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Filters</h2>
+
+      <form id="filters" class="grid" autocomplete="off">
+        <div class="field">
+          <label for="year">Year</label>
+          <select id="year" name="year">
+            <option value="">(Any)</option>
+            <option value="2016">2016</option>
+            <option value="2018">2018</option>
+            <option value="2023" selected>2023</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="sex">Sex</label>
+          <select id="sex" name="sex">
+            <option value="">(Any)</option>
+            <option value="F">F</option>
+            <option value="M">M</option>
+            <option value="U">U</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="state">State</label>
+          <input id="state" name="state" placeholder="e.g., GA" maxlength="2" />
+        </div>
+
+        <div class="field">
+          <label for="age_min">Age min</label>
+          <input id="age_min" name="age_min" type="number" min="0" step="0.1" placeholder="e.g., 18" />
+        </div>
+
+        <div class="field">
+          <label for="age_max">Age max</label>
+          <input id="age_max" name="age_max" type="number" min="0" step="0.1" placeholder="e.g., 65" />
+        </div>
+
+        <div class="field">
+          <label for="serious_only">Serious only</label>
+          <select id="serious_only" name="serious_only">
+            <option value="false" selected>false</option>
+            <option value="true">true</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="vax_type">VAX_TYPE</label>
+          <input id="vax_type" name="vax_type" placeholder="e.g., COVID19, FLU, PNC" />
+        </div>
+
+        <div class="field">
+          <label for="vax_manu">VAX_MANU</label>
+          <input id="vax_manu" name="vax_manu" placeholder="e.g., PFIZER\WYETH" />
+        </div>
+
+        <div class="field">
+          <label for="symptom_term">Symptom term (PT)</label>
+          <input id="symptom_term" name="symptom_term" placeholder="e.g., Headache" />
+        </div>
+
+        <div class="field">
+          <label for="sort_by">Sort by</label>
+          <select id="sort_by" name="sort_by">
+            <option value="prr" selected>PRR</option>
+            <option value="ror">ROR</option>
+            <option value="a">Pair count (a)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="limit">Rows</label>
+          <select id="limit" name="limit">
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="min_count">min_count (a)</label>
+          <input id="min_count" name="min_count" type="number" min="1" step="1" value="5" />
+        </div>
+
+        <div class="field">
+          <label for="min_vax_total">min_vax_total</label>
+          <input id="min_vax_total" name="min_vax_total" type="number" min="1" step="1" value="20" />
+        </div>
+
+        <div class="field">
+          <label for="min_sym_total">min_sym_total</label>
+          <input id="min_sym_total" name="min_sym_total" type="number" min="1" step="1" value="20" />
+        </div>
+
+        <div class="field">
+          <label for="cc">Continuity correction</label>
+          <input id="cc" name="cc" type="number" min="0" step="0.1" value="0.5" />
+        </div>
+
+        <div class="field">
+          <label for="base_id_cap">base_id_cap (dev)</label>
+          <input id="base_id_cap" name="base_id_cap" type="number" min="0" step="1" value="0" />
+        </div>
+
+        <div class="actions">
+          <button id="runBtn" type="submit">Run signals</button>
+          <button id="resetBtn" type="button" class="secondary">Reset</button>
+        </div>
+      </form>
+
+      <p class="note">
+        <strong>Guardrails:</strong> VAERS is a passive reporting system. This table is <em>hypothesis-generating</em> and does not imply causality or incidence.
+        Use higher <code>min_count</code> and marginal thresholds to avoid unstable ratios on tiny counts.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <h2 class="grow">Signals</h2>
+        <div id="status" class="status">Ready.</div>
+      </div>
+
+      <div class="meta">
+        <div><span class="pill">N (universe)</span> <span id="N">—</span></div>
+        <div><span class="pill">Cached</span> <span id="cached">—</span></div>
+        <div><span class="pill">Time</span> <span id="time_utc">—</span></div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="signalsTable">
+          <thead>
+          <tr>
+            <th data-key="vax_type">VAX_TYPE</th>
+            <th data-key="vax_manu">VAX_MANU</th>
+            <th data-key="pt">PT (symptom)</th>
+            <th data-key="a" data-num="1">a</th>
+            <th data-key="b" data-num="1">b</th>
+            <th data-key="c" data-num="1">c</th>
+            <th data-key="d" data-num="1">d</th>
+            <th data-key="prr" data-num="1">PRR</th>
+            <th data-key="ror" data-num="1">ROR</th>
+            <th data-key="cc_applied" data-num="1">cc?</th>
+          </tr>
+          </thead>
+          <tbody id="signalsBody">
+          <tr><td colspan="10" class="muted">Run a query to see results.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>VaxScope dev UI • Flask + MongoDB</span>
+  </footer>
+
+  <script src="/static/js/signals.js"></script>
+</body>
+</html>
