@@ -16,6 +16,9 @@
   let activeTab = localStorage.getItem("vaxscope_active_tab") || "signals";
    let trendsChartType =
     localStorage.getItem("vaxscope_trends_chart_type") || "hbar";
+   let onsetChartType =
+    localStorage.getItem("vaxscope_onset_chart_type") || "hbar";
+
 
   function setStatus(msg, type = "info") {
     statusEl.textContent = msg;
@@ -205,32 +208,160 @@
       <div class="pill">avg: <b>${num(stats.avg, 2)}</b></div>
     `;
 
+    // cache payload so chart-type switch can re-render without refetch
+    if (typeof window !== "undefined") {
+      window._onsetLastData = data;
+    }
+
     const chart = $("#onsetChart");
+    if (!chart) return;
     chart.innerHTML = "";
 
     const buckets = data?.buckets || [];
-    const maxN = Math.max(1, ...buckets.map((b) => b.n || 0));
-
-    for (const b of buckets) {
-      const lo = b.lo;
-      const hi = b.hi;
-      const label = (lo == null || hi == null) ? "—" : `${lo}–${hi}`;
-      const w = Math.round(((b.n || 0) / maxN) * 100);
-
-      const row = document.createElement("div");
-      row.className = "bar-row";
-      row.innerHTML = `
-        <div class="bar-label">${escapeHtml(label)}</div>
-        <div class="bar">
-          <div class="bar-fill" style="width:${w}%"></div>
-        </div>
-        <div class="bar-val">${num(b.n)}</div>
-      `;
-      chart.appendChild(row);
+    if (!buckets.length) {
+      chart.textContent = "No onset data for current filters.";
+      setStatus(
+        `Onset loaded: 0 buckets (obs=${data?.obs ?? 0}).`,
+        "ok"
+      );
+      return;
     }
 
-    setStatus(`Onset loaded: ${buckets.length} buckets (obs=${data?.obs ?? 0}).`, "ok");
+    const maxN = Math.max(1, ...buckets.map((b) => b.n || 0));
+    const type = onsetChartType || "hbar";
+
+    // reset base class and add mode-specific class
+    chart.className = "bars";
+    chart.classList.remove("bars-vertical", "line-chart");
+    if (type === "vbar") chart.classList.add("bars-vertical");
+    else if (type === "line") chart.classList.add("line-chart");
+
+    const labelForBucket = (b) => {
+      const lo = b.lo;
+      const hi = b.hi;
+      return lo == null || hi == null ? "—" : `${lo}–${hi}`;
+    };
+
+    if (type === "hbar") {
+      // horizontal bars (same style as Trends)
+      for (const b of buckets) {
+        const label = labelForBucket(b);
+        const value = b.n || 0;
+        const w = Math.round((value / maxN) * 100);
+
+        const row = document.createElement("div");
+        row.className = "bar-row";
+        row.innerHTML = `
+          <div class="bar-label">${escapeHtml(label)}</div>
+          <div class="bar">
+            <div class="bar-fill" style="width:${w}%"></div>
+          </div>
+          <div class="bar-val">${num(value)}</div>
+        `;
+        chart.appendChild(row);
+      }
+    } else if (type === "vbar") {
+      // vertical bars (reuse your Trends vertical style)
+      const wrapper = document.createElement("div");
+      wrapper.className = "bars-v-wrapper";
+
+      const maxBarHeight = 200; // px
+
+      for (const b of buckets) {
+        const label = labelForBucket(b);
+        const value = b.n || 0;
+        const h = Math.max(
+          4,
+          Math.round((value / maxN) * maxBarHeight)
+        );
+
+        const col = document.createElement("div");
+        col.className = "bars-v-col";
+        col.innerHTML = `
+          <div class="bars-v-bar" style="height:${h}px"></div>
+          <div class="bars-v-val">${num(value)}</div>
+          <div class="bars-v-label">${escapeHtml(label)}</div>
+        `;
+        wrapper.appendChild(col);
+      }
+
+      chart.appendChild(wrapper);
+    } else {
+      // line chart (same SVG approach as Trends)
+      const svgNS = "http://www.w3.org/2000/svg";
+      const width = 700;
+      const height = 260;
+      const padX = 40;
+      const padY = 30;
+      const innerW = width - padX * 2;
+      const innerH = height - padY * 2;
+
+      const svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.classList.add("trend-line-svg");
+
+      // axes
+      const axis = document.createElementNS(svgNS, "path");
+      axis.setAttribute(
+        "d",
+        `M ${padX} ${padY} V ${height - padY} H ${width - padX}`
+      );
+      axis.setAttribute("class", "trend-line-axis");
+      axis.setAttribute("fill", "none");
+      svg.appendChild(axis);
+
+      const points = buckets.map((b, i) => {
+        const label = labelForBucket(b);
+        const value = b.n || 0;
+        const x =
+          padX +
+          (buckets.length === 1
+            ? innerW / 2
+            : (innerW * i) / (buckets.length - 1));
+        const y = height - padY - (maxN ? (value / maxN) * innerH : 0);
+        return { x, y, label, value };
+      });
+
+      // line
+      const path = document.createElementNS(svgNS, "path");
+      let d = "";
+      points.forEach((pt, i) => {
+        d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y;
+      });
+      path.setAttribute("d", d);
+      path.setAttribute("class", "trend-line-path");
+      path.setAttribute("fill", "none");
+      svg.appendChild(path);
+
+      // dots + labels
+      for (const pt of points) {
+        const c = document.createElementNS(svgNS, "circle");
+        c.setAttribute("cx", pt.x);
+        c.setAttribute("cy", pt.y);
+        c.setAttribute("r", 3);
+        c.setAttribute("class", "trend-line-dot");
+        const title = document.createElementNS(svgNS, "title");
+        title.textContent = `${pt.label}: ${num(pt.value)}`;
+        c.appendChild(title);
+        svg.appendChild(c);
+
+        const label = document.createElementNS(svgNS, "text");
+        label.setAttribute("x", pt.x);
+        label.setAttribute("y", height - padY + 12);
+        label.setAttribute("text-anchor", "middle");
+        label.textContent = pt.label;
+        svg.appendChild(label);
+      }
+
+      chart.appendChild(svg);
+    }
+
+    setStatus(
+      `Onset loaded: ${buckets.length} buckets (obs=${data?.obs ?? 0}).`,
+      "ok"
+    );
   }
+
 
   // ---------- Render: Outcomes ----------
   function renderOutcomes(data) {
@@ -515,6 +646,37 @@ svg.appendChild(path);
     // apply stored preference on load
     setTrendsChartType(trendsChartType);
   }
+
+    // Onset chart-type toggle
+  const onsetChartButtons = $$(".onset-chart-btn");
+
+  function setOnsetChartType(type) {
+    onsetChartType = type || "hbar";
+    localStorage.setItem("vaxscope_onset_chart_type", onsetChartType);
+
+    onsetChartButtons.forEach((btn) => {
+      btn.classList.toggle(
+        "active",
+        btn.dataset.chartType === onsetChartType
+      );
+    });
+
+    if (typeof window !== "undefined" && window._onsetLastData) {
+      renderOnset(window._onsetLastData);
+    }
+  }
+
+  if (onsetChartButtons.length) {
+    onsetChartButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setOnsetChartType(btn.dataset.chartType);
+      });
+    });
+
+    // apply stored preference on load
+    setOnsetChartType(onsetChartType);
+  }
+
 
 
   // ---------- init ----------
