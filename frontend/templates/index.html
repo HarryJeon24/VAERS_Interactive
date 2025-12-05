@@ -262,12 +262,34 @@
           <span class="pill">time: <b id="trends_time">—</b></span>
         </div>
 
-        <div class="panel-controls">
-          <div class="field inline">
-            <label for="trends_clip_months">Last N months (0=all)</label>
-            <input id="trends_clip_months" type="number" min="0" value="0" />
-          </div>
+    <div class="panel-controls">
+      <div class="field inline">
+        <label for="trends_clip_months">Last N months (0=all)</label>
+        <input id="trends_clip_months" type="number" min="0" value="0" />
+      </div>
+
+      <div class="field inline">
+        <label>Chart type</label>
+        <div class="trends-chart-toggle">
+          <button type="button"
+                  class="trends-chart-btn"
+                  data-chart-type="hbar">
+            Bars (horizontal)
+          </button>
+          <button type="button"
+                  class="trends-chart-btn"
+                  data-chart-type="vbar">
+            Bars (vertical)
+          </button>
+          <button type="button"
+                  class="trends-chart-btn"
+                  data-chart-type="line">
+            Line
+          </button>
         </div>
+      </div>
+    </div>
+
 
         <div id="trendsChart" class="bars"></div>
       </div>
