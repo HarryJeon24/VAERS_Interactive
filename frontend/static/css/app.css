@@ -300,6 +300,30 @@ tr:hover td{
   cursor:pointer;
 }
 
+.onset-chart-toggle{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+
+.onset-chart-btn{
+  appearance:none;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,0.03);
+  color:var(--muted);
+  padding:4px 10px;
+  font-size:11px;
+  cursor:pointer;
+}
+
+.onset-chart-btn.active{
+  background:rgba(110,168,255,0.18);
+  color:var(--text);
+  border-color:var(--accent);
+}
+
+
 .trends-chart-btn.active{
   background:rgba(110,168,255,0.18);
   color:var(--text);

@@ -221,28 +221,57 @@
         </div>
       </div>
 
-      <!-- Onset panel -->
-      <div class="panel" data-tab-panel="onset" hidden>
-        <div class="meta">
-          <span class="pill">N(base): <b id="onset_N">—</b></span>
-          <span class="pill">observations: <b id="onset_obs">—</b></span>
-          <span class="pill">time: <b id="onset_time">—</b></span>
-        </div>
+<!-- Onset panel -->
+<div class="panel" data-tab-panel="onset" hidden>
+  <div class="meta">
+    <span class="pill">N(base): <b id="onset_N">—</b></span>
+    <span class="pill">observations: <b id="onset_obs">—</b></span>
+    <span class="pill">time: <b id="onset_time">—</b></span>
+  </div>
 
-        <div class="panel-controls">
-          <div class="field inline">
-            <label for="onset_buckets">Buckets</label>
-            <input id="onset_buckets" type="number" min="5" max="60" value="30" />
-          </div>
-          <div class="field inline">
-            <label for="onset_clip_max">Clip max days</label>
-            <input id="onset_clip_max" type="number" min="0" value="180" />
-          </div>
-        </div>
+  <div class="panel-controls">
+    <div class="field inline">
+      <label for="onset_buckets">Buckets</label>
+      <input id="onset_buckets" type="number" min="5" max="60" value="30" />
+    </div>
 
-        <div id="onsetSummary" class="summary"></div>
-        <div id="onsetChart" class="bars"></div>
+    <div class="field inline">
+      <label for="onset_clip_max">Clip max days</label>
+      <input id="onset_clip_max" type="number" min="0" value="180" />
+    </div>
+
+    <div class="field inline">
+      <label>Chart type</label>
+      <div class="onset-chart-toggle">
+        <button
+          type="button"
+          class="onset-chart-btn"
+          data-chart-type="hbar"
+        >
+          Bars (horizontal)
+        </button>
+        <button
+          type="button"
+          class="onset-chart-btn"
+          data-chart-type="vbar"
+        >
+          Bars (vertical)
+        </button>
+        <button
+          type="button"
+          class="onset-chart-btn"
+          data-chart-type="line"
+        >
+          Line
+        </button>
       </div>
+    </div>
+  </div>
+
+  <div id="onsetSummary" class="summary"></div>
+  <div id="onsetChart" class="bars"></div>
+</div>
+
 
       <!-- Outcomes panel -->
       <div class="panel" data-tab-panel="outcomes" hidden>
