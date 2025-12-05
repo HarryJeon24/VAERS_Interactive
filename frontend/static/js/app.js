@@ -14,6 +14,8 @@
   const form = $("#filtersForm");
 
   let activeTab = localStorage.getItem("vaxscope_active_tab") || "signals";
+   let trendsChartType =
+    localStorage.getItem("vaxscope_trends_chart_type") || "hbar";
 
   function setStatus(msg, type = "info") {
     statusEl.textContent = msg;
@@ -262,28 +264,146 @@
     $("#trends_points").textContent = data?.points ?? "0";
     $("#trends_time").textContent = data?.time_utc ?? "";
 
+    // cache payload so chart-type switch can re-render without refetch
+    if (typeof window !== "undefined") {
+      window._trendsLastData = data;
+    }
+
     const chart = $("#trendsChart");
+    if (!chart) return;
     chart.innerHTML = "";
 
     const series = data?.series || [];
-    const maxN = Math.max(1, ...series.map((p) => p.n || 0));
+    if (!series.length) {
+      chart.textContent = "No trend data for current filters.";
+      setStatus("Trends loaded: 0 months.", "ok");
+      return;
+    }
 
-    for (const p of series) {
-      const w = Math.round(((p.n || 0) / maxN) * 100);
-      const row = document.createElement("div");
-      row.className = "bar-row";
-      row.innerHTML = `
-        <div class="bar-label">${escapeHtml(p.month ?? "")}</div>
-        <div class="bar">
-          <div class="bar-fill" style="width:${w}%"></div>
-        </div>
-        <div class="bar-val">${num(p.n)}</div>
-      `;
-      chart.appendChild(row);
+    const maxN = Math.max(1, ...series.map((p) => p.n || 0));
+    const type = trendsChartType || "hbar";
+
+    // reset base class and add mode-specific class
+    chart.className = "bars";
+    chart.classList.remove("bars-vertical", "line-chart");
+    if (type === "vbar") chart.classList.add("bars-vertical");
+    else if (type === "line") chart.classList.add("line-chart");
+
+    if (type === "hbar") {
+      // ORIGINAL horizontal bar view
+      for (const p of series) {
+        const w = Math.round(((p.n || 0) / maxN) * 100);
+        const row = document.createElement("div");
+        row.className = "bar-row";
+        row.innerHTML = `
+          <div class="bar-label">${escapeHtml(p.month ?? "")}</div>
+          <div class="bar">
+            <div class="bar-fill" style="width:${w}%"></div>
+          </div>
+          <div class="bar-val">${num(p.n)}</div>
+        `;
+        chart.appendChild(row);
+      }
+} else if (type === "vbar") {
+  // NEW vertical bar view
+  const wrapper = document.createElement("div");
+  wrapper.className = "bars-v-wrapper";
+
+  const maxBarHeight = 200; // px, visual height of tallest bar
+
+  for (const p of series) {
+    const value = p.n || 0;
+    const h = Math.max(
+      4, // minimum visible bar
+      Math.round((value / maxN) * maxBarHeight)
+    );
+
+    const col = document.createElement("div");
+    col.className = "bars-v-col";
+    col.innerHTML = `
+      <div class="bars-v-bar" style="height:${h}px"></div>
+      <div class="bars-v-val">${num(value)}</div>
+      <div class="bars-v-label">${escapeHtml(p.month ?? "")}</div>
+    `;
+    wrapper.appendChild(col);
+  }
+
+  chart.appendChild(wrapper);
+}
+else {
+      // NEW line chart view (simple SVG)
+      const svgNS = "http://www.w3.org/2000/svg";
+      const width = 700;
+      const height = 260;
+      const padX = 40;
+      const padY = 30;
+      const innerW = width - padX * 2;
+      const innerH = height - padY * 2;
+
+      const svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.classList.add("trend-line-svg");
+
+      // axes
+      const axis = document.createElementNS(svgNS, "path");
+      axis.setAttribute(
+        "d",
+        `M ${padX} ${padY} V ${height - padY} H ${width - padX}`
+      );
+      axis.setAttribute("class", "trend-line-axis");
+      axis.setAttribute("fill", "none");   // ✅ prevent the triangle fill
+      svg.appendChild(axis);
+
+
+      const points = series.map((p, i) => {
+        const x =
+          padX +
+          (series.length === 1
+            ? innerW / 2
+            : (innerW * i) / (series.length - 1));
+        const value = p.n || 0;
+        const y = height - padY - (maxN ? (value / maxN) * innerH : 0);
+        return { x, y, p };
+      });
+
+      // line
+const path = document.createElementNS(svgNS, "path");
+let d = "";
+points.forEach((pt, i) => {
+  d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y;
+});
+path.setAttribute("d", d);
+path.setAttribute("class", "trend-line-path");
+path.setAttribute("fill", "none");  
+svg.appendChild(path);
+
+
+      // dots + labels
+      for (const pt of points) {
+        const c = document.createElementNS(svgNS, "circle");
+        c.setAttribute("cx", pt.x);
+        c.setAttribute("cy", pt.y);
+        c.setAttribute("r", 3);
+        c.setAttribute("class", "trend-line-dot");
+        const title = document.createElementNS(svgNS, "title");
+        title.textContent = `${pt.p.month}: ${num(pt.p.n)}`;
+        c.appendChild(title);
+        svg.appendChild(c);
+
+        const label = document.createElementNS(svgNS, "text");
+        label.setAttribute("x", pt.x);
+        label.setAttribute("y", height - padY + 12);
+        label.setAttribute("text-anchor", "middle");
+        label.textContent = pt.p.month ?? "";
+        svg.appendChild(label);
+      }
+
+      chart.appendChild(svg);
     }
 
     setStatus(`Trends loaded: ${series.length} months.`, "ok");
   }
+
 
   // ---------- Run per tab ----------
   async function runSignals(params) {
@@ -365,6 +485,37 @@
     form.reset();
     setStatus("Filters reset.", "info");
   });
+
+    // Trends chart-type toggle
+  const trendsChartButtons = $$(".trends-chart-btn");
+
+  function setTrendsChartType(type) {
+    trendsChartType = type || "hbar";
+    localStorage.setItem("vaxscope_trends_chart_type", trendsChartType);
+
+    trendsChartButtons.forEach((btn) => {
+      btn.classList.toggle(
+        "active",
+        btn.dataset.chartType === trendsChartType
+      );
+    });
+
+    if (typeof window !== "undefined" && window._trendsLastData) {
+      renderTrends(window._trendsLastData);
+    }
+  }
+
+  if (trendsChartButtons.length) {
+    trendsChartButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setTrendsChartType(btn.dataset.chartType);
+      });
+    });
+
+    // apply stored preference on load
+    setTrendsChartType(trendsChartType);
+  }
+
 
   // ---------- init ----------
   setActiveTab(activeTab);

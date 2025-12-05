@@ -283,6 +283,103 @@ tr:hover td{
   margin-top: 10px;
 }
 
+.trends-chart-toggle{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+
+.trends-chart-btn{
+  appearance:none;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,0.03);
+  color:var(--muted);
+  padding:4px 10px;
+  font-size:11px;
+  cursor:pointer;
+}
+
+.trends-chart-btn.active{
+  background:rgba(110,168,255,0.18);
+  color:var(--text);
+  border-color:var(--accent);
+}
+
+
+/* Vertical trends bars */
+.bars-vertical{
+  height:260px;           /* give the chart area a fixed height */
+  padding:12px 8px 4px;
+}
+
+
+.bars-vertical .bars-v-wrapper{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  width:100%;
+  height:100%;            /* take full height of the container */
+}
+
+.bars-v-col{
+  flex:1 1 0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+}
+
+.bars-v-bar{
+  width:14px;
+  border-radius:999px 999px 0 0;
+  background:linear-gradient(
+    135deg,
+    rgba(110,168,255,0.9),
+    rgba(155,123,255,0.9)
+  );
+}
+
+.bars-v-val{
+  font-size:11px;
+  color:rgba(255,255,255,0.9);
+}
+
+.bars-v-label{
+  font-size:10px;
+  color:var(--muted);
+}
+
+
+/* Line chart for trends */
+.line-chart .trend-line-svg{
+  width:100%;
+  max-height:260px;
+}
+
+.line-chart .trend-line-axis{
+  stroke:rgba(255,255,255,0.25);
+  stroke-width:1;
+  fill:none; 
+}
+
+.line-chart .trend-line-path{
+  fill:none;                     /* ✅ redundant but safe */
+  stroke:var(--accent);
+  stroke-width:2;
+}
+
+.line-chart .trend-line-dot{
+  fill:var(--accent2);
+}
+
+.line-chart text{
+  font-size:10px;
+  fill:var(--muted);
+}
+
+
+
 .bar-row{
   display:grid;
   grid-template-columns: 140px 1fr 70px;
