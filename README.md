@@ -82,7 +82,7 @@ When loading the subsample CSVs into MongoDB, we already:
 * Upsert in batches to avoid duplicates
 * Create indexes on key fields (VAERS_ID, dates, demographics, vaccine fields, symptoms)
 
-We do **not** do NLP cleaning of text narratives or heavy standardization of manufacturer strings. If needed later, we’ll do it on-the-fly in aggregation pipelines or via targeted in-place updates (no full reload).
+We did NLP cleaning of text narratives for lab data, other med, cur_illl, history, previous_vax, allergies, check backend/scripts for more information.
 
 ---
 
