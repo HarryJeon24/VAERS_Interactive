@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 DATA_DIR = ROOT / "data" / "subsample"
-CSV_DATA = DATA_DIR / "devVAERSDATA.csv"
+DATA_PROCESSED = ROOT / "data" / "processed"
+CSV_DATA = DATA_PROCESSED / "devVAERSDATA_clean.csv"
 CSV_VAX  = DATA_DIR / "devVAERSVAX.csv"
 CSV_SYM  = DATA_DIR / "devVAERSSYMPTOMS.csv"
 
