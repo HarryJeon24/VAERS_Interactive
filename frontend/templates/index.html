@@ -17,16 +17,16 @@
         <div class="logo">VS</div>
         <div>
           <div class="title">VaxScope</div>
-          <div class="subtitle">VAERS interactive explorer (dev subsample)</div>
+          <div class="subtitle">VAERS interactive explorer</div>
         </div>
       </div>
 
       <nav class="tabs" aria-label="Primary">
-        <button class="tab-btn" data-tab="signals" aria-selected="true">Signals</button>
-        <button class="tab-btn" data-tab="search" aria-selected="false">Search</button>
+        <button class="tab-btn" data-tab="search" aria-selected="true">Search</button>
         <button class="tab-btn" data-tab="onset" aria-selected="false">Onset</button>
         <button class="tab-btn" data-tab="outcomes" aria-selected="false">Outcomes</button>
         <button class="tab-btn" data-tab="trends" aria-selected="false">Trends</button>
+        <button class="tab-btn" data-tab="signals" aria-selected="false">Signals</button>
       </nav>
     </div>
   </header>
@@ -63,17 +63,17 @@
         </div>
 
         <div class="field">
-          <label for="age_min">Age min</label>
+          <label for="age_min">Age Min</label>
           <input id="age_min" name="age_min" type="number" step="0.1" placeholder="e.g., 18" />
         </div>
 
         <div class="field">
-          <label for="age_max">Age max</label>
+          <label for="age_max">Age Max</label>
           <input id="age_max" name="age_max" type="number" step="0.1" placeholder="e.g., 45" />
         </div>
 
         <div class="field">
-          <label for="serious_only">Serious only</label>
+          <label for="serious_only">Serious Only</label>
           <select id="serious_only" name="serious_only">
             <option value="">Any</option>
             <option value="true">Yes</option>
@@ -82,22 +82,22 @@
         </div>
 
         <div class="field">
-          <label for="vax_type">VAX_TYPE</label>
-          <input id="vax_type" name="vax_type" type="text" placeholder="e.g., COVID19, FLU" />
+          <label for="vax_type">Vaccine Type</label>
+          <input id="vax_type" name="vax_type" type="text" placeholder="e.g., TD, FLU" />
         </div>
 
         <div class="field">
-          <label for="vax_manu">VAX_MANU</label>
+          <label for="vax_manu">Vaccine Manufacturer</label>
           <input id="vax_manu" name="vax_manu" type="text" placeholder="e.g., PFIZER\\BIONTECH" />
         </div>
 
         <div class="field">
-          <label for="symptom_term">Symptom term (MedDRA PT)</label>
+          <label for="symptom_term">Symptom Term (MedDRA PT)</label>
           <input id="symptom_term" name="symptom_term" type="text" placeholder="e.g., Headache" />
         </div>
 
         <div class="field">
-          <label for="symptom_text">Symptom text contains</label>
+          <label for="symptom_text">Symptom Text Contains</label>
           <input id="symptom_text" name="symptom_text" type="text" placeholder="free-text narrative search" />
         </div>
 

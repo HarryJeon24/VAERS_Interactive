@@ -610,7 +610,7 @@ tr:hover td{
 
 .us-map{
   width: 100%;
-  min-height: 400px;
+  min-height: 350px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 12px;
   overflow: hidden;
@@ -618,7 +618,8 @@ tr:hover td{
 
 .us-map svg{
   width: 100%;
-  height: auto;
+  height: 300px;
+  margin-top: 10px;
 }
 
 .us-map path{
