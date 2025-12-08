@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VaxScope (Dev)</title>
   <link rel="stylesheet" href="/static/css/app.css" />
+  <!-- D3.js for map visualization -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
 </head>
 
 <body>
@@ -108,6 +111,44 @@
           <input id="onset_end" name="onset_end" type="date" />
         </div>
 
+        <!-- Collapsible Other Filter Options -->
+        <div class="divider"></div>
+
+        <div class="field" style="grid-column: 1 / -1;">
+          <button type="button" id="toggleOtherFilters" class="collapse-toggle">
+            <span class="toggle-icon">▶</span> Other Filter Options
+          </button>
+        </div>
+
+        <div id="otherFiltersSection" class="collapsible-section" style="display: none; grid-column: 1 / -1;">
+          <div class="grid">
+            <div class="field">
+              <label for="other_meds">Other Medications</label>
+              <input id="other_meds" name="other_meds" type="text" placeholder="e.g., ibuprofen, metformin" />
+            </div>
+
+            <div class="field">
+              <label for="cur_ill">Current Illness</label>
+              <input id="cur_ill" name="cur_ill" type="text" placeholder="e.g., hypertension, diabetes" />
+            </div>
+
+            <div class="field">
+              <label for="history">Medical History</label>
+              <input id="history" name="history" type="text" placeholder="e.g., asthma, arthritis" />
+            </div>
+
+            <div class="field">
+              <label for="prior_vax">Previous Vaccinations</label>
+              <input id="prior_vax" name="prior_vax" type="text" placeholder="e.g., influenza, covid-19" />
+            </div>
+
+            <div class="field">
+              <label for="allergies">Allergies</label>
+              <input id="allergies" name="allergies" type="text" placeholder="e.g., penicillin, shellfish" />
+            </div>
+          </div>
+        </div>
+
         <!-- Signals-specific controls (still okay to show here; only Signals uses them) -->
         <div class="divider"></div>
 
@@ -199,6 +240,25 @@
           <span class="pill">count: <b id="search_count">—</b></span>
           <span class="pill">limit: <b id="search_limit">—</b></span>
           <span class="pill">time: <b id="search_time">—</b></span>
+        </div>
+
+        <!-- Geographic Visualization -->
+        <div class="geo-section">
+          <h3 class="section-title">Geographic Distribution</h3>
+
+          <div class="map-controls">
+            <div class="field inline">
+              <label for="mapMetric">Color by:</label>
+              <select id="mapMetric">
+                <option value="count">Report Count</option>
+                <option value="serious_ratio">Serious Ratio</option>
+                <option value="avg_age">Average Age</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="mapLegend" class="map-legend"></div>
+          <div id="geoMap" class="us-map"></div>
         </div>
 
         <div class="table-wrap">

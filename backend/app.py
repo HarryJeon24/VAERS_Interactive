@@ -8,6 +8,8 @@ from backend.api.signals import bp as signals_bp
 from backend.api.onset import bp as onset_bp
 from backend.api.outcomes import bp as outcomes_bp
 from backend.api.trends import bp as trends_bp
+from backend.api.filter_options import bp as filter_options_bp
+from backend.api.geo_data import bp as geo_data_bp
 from backend.db.mongo import get_client
 
 
@@ -32,6 +34,8 @@ def create_app() -> Flask:
     app.register_blueprint(onset_bp)
     app.register_blueprint(outcomes_bp)
     app.register_blueprint(trends_bp)
+    app.register_blueprint(filter_options_bp)
+    app.register_blueprint(geo_data_bp)
 
     # Health
     @app.get("/health")
