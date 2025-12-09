@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from backend.db.mongo import get_db
 from backend.services.filters import build_filters
+from backend.api.signals import _get_base_ids
 
 bp = Blueprint("search_api", __name__, url_prefix="/api")
 
@@ -52,8 +53,29 @@ def search_reports():
     except ValueError:
         limit_n = 50
 
+    base_id_cap = int(request.args.get("base_id_cap", "0") or 0)
+
+    # Get filtered base IDs using join filters
+    base_ids = _get_base_ids(data_match, join_filters, base_id_cap=base_id_cap)
+
     db = get_db()
     coll = db["vaers_data"]
+
+    # If no reports match the filters, return empty results
+    if not base_ids:
+        return jsonify(
+            {
+                "time_utc": datetime.utcnow().isoformat() + "Z",
+                "filters": {
+                    "parsed": f.__dict__,
+                    "vaers_data_match": data_match,
+                    "join_filters": join_filters,
+                },
+                "count": 0,
+                "limit": limit_n,
+                "results": [],
+            }
+        )
 
     # projection: keep response small + relevant
     proj = {
@@ -76,16 +98,15 @@ def search_reports():
         "FORM_VERS": 1,
     }
 
+    # Query only the filtered base_ids
     cursor = (
-        coll.find(data_match, proj)
+        coll.find({"VAERS_ID": {"$in": base_ids}}, proj)
         .sort([("YEAR", 1), ("VAERS_ID", 1)])
         .limit(limit_n)
     )
     docs = [_json_safe(d) for d in cursor]
 
-    # optional: a quick count (can be slow on huge data; OK for dev)
-    # In dev this is fine; in prod you might gate it behind a flag.
-    count = coll.count_documents(data_match)
+    count = len(base_ids)
 
     return jsonify(
         {
@@ -93,7 +114,7 @@ def search_reports():
             "filters": {
                 "parsed": f.__dict__,
                 "vaers_data_match": data_match,
-                "join_filters_reserved": join_filters,
+                "join_filters": join_filters,
             },
             "count": count,
             "limit": limit_n,

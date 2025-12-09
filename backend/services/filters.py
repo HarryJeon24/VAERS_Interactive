@@ -71,6 +71,13 @@ class FilterSpec:
     died_only: bool = False
     hospital_only: bool = False
 
+    # Medical history filters
+    other_meds: Optional[str] = None       # OTHER_MEDS field
+    cur_ill: Optional[str] = None          # CUR_ILL field
+    history: Optional[str] = None          # HISTORY field
+    prior_vax: Optional[str] = None        # PRIOR_VAX field
+    allergies: Optional[str] = None        # ALLERGIES field
+
     # Join-side filters (used in later feature endpoints)
     vax_type: Optional[str] = None
     vax_manu: Optional[str] = None
@@ -100,6 +107,13 @@ def from_request(req: Request) -> FilterSpec:
     died_only = _truthy(args.get("died_only"))
     hospital_only = _truthy(args.get("hospital_only"))
 
+    # Medical history filters (case-insensitive substring search)
+    other_meds = (args.get("other_meds") or "").strip() or None
+    cur_ill = (args.get("cur_ill") or "").strip() or None
+    history = (args.get("history") or "").strip() or None
+    prior_vax = (args.get("prior_vax") or "").strip() or None
+    allergies = (args.get("allergies") or "").strip() or None
+
     vax_type = (args.get("vax_type") or "").strip().upper() or None
     vax_manu = (args.get("vax_manu") or "").strip() or None
 
@@ -117,6 +131,11 @@ def from_request(req: Request) -> FilterSpec:
         serious_only=serious_only,
         died_only=died_only,
         hospital_only=hospital_only,
+        other_meds=other_meds,
+        cur_ill=cur_ill,
+        history=history,
+        prior_vax=prior_vax,
+        allergies=allergies,
         vax_type=vax_type,
         vax_manu=vax_manu,
         symptom_term=symptom_term,
@@ -168,6 +187,18 @@ def build_vaers_data_match(f: FilterSpec) -> Dict[str, Any]:
         m["DIED"] = "Y"
     if f.hospital_only:
         m["HOSPITAL"] = "Y"
+
+    # Medical history filters (case-insensitive substring search)
+    if f.other_meds:
+        m["OTHER_MEDS"] = {"$regex": f.other_meds, "$options": "i"}
+    if f.cur_ill:
+        m["CUR_ILL"] = {"$regex": f.cur_ill, "$options": "i"}
+    if f.history:
+        m["HISTORY"] = {"$regex": f.history, "$options": "i"}
+    if f.prior_vax:
+        m["PRIOR_VAX"] = {"$regex": f.prior_vax, "$options": "i"}
+    if f.allergies:
+        m["ALLERGIES"] = {"$regex": f.allergies, "$options": "i"}
 
     return m
 

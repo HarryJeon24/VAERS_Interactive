@@ -6,6 +6,7 @@ Returns state-level counts for map visualization.
 from flask import Blueprint, jsonify, request
 from backend.db.mongo import get_db
 from backend.services.filters import build_filters
+from backend.api.signals import _get_base_ids
 
 bp = Blueprint("geo_data", __name__, url_prefix="/api")
 
@@ -38,9 +39,21 @@ def get_state_counts():
         f, data_match, join_filters = build_filters(request)
         db = get_db()
 
+        base_id_cap = int(request.args.get("base_id_cap", "0") or 0)
+
+        # Get filtered base IDs using join filters
+        base_ids = _get_base_ids(data_match, join_filters, base_id_cap=base_id_cap)
+
+        if not base_ids:
+            return jsonify({
+                "states": [],
+                "total": 0,
+                "time_utc": datetime.utcnow().isoformat()
+            })
+
         # Aggregation pipeline to get comprehensive state stats
         pipeline = [
-            {"$match": data_match},
+            {"$match": {"VAERS_ID": {"$in": base_ids}}},
             {
                 "$group": {
                     "_id": "$STATE",

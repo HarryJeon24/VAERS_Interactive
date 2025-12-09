@@ -104,43 +104,71 @@ def _get_base_ids(
 ) -> List[int]:
     """
     Build base universe VAERS_IDs from vaers_data with optional join constraints.
+    Optimized to query collections separately and find intersection.
     Optional base_id_cap to prevent huge sets in dev.
     """
     db = get_db()
-    pipeline: List[Dict[str, Any]] = [{"$match": data_match}]
 
     vax_type = join_filters.get("vax_type")
     vax_manu = join_filters.get("vax_manu")
     symptom_term = join_filters.get("symptom_term")
 
+    # Start with IDs matching the data filters
+    base_ids_set = None
+
+    # If we have vaccine filters, get matching IDs from vaers_vax first
     if vax_type or vax_manu:
-        pipeline += [
-            {"$lookup": {"from": "vaers_vax", "localField": "VAERS_ID", "foreignField": "VAERS_ID", "as": "vax"}},
-            {"$unwind": "$vax"},
-        ]
         vax_match: Dict[str, Any] = {}
         if vax_type:
-            vax_match["vax.VAX_TYPE"] = vax_type
+            vax_match["VAX_TYPE"] = vax_type
         if vax_manu:
-            vax_match["vax.VAX_MANU"] = vax_manu
-        pipeline.append({"$match": vax_match})
+            vax_match["VAX_MANU"] = vax_manu
 
+        vax_ids = set(
+            doc["VAERS_ID"]
+            for doc in db["vaers_vax"].find(vax_match, {"VAERS_ID": 1})
+            if doc.get("VAERS_ID") is not None
+        )
+        base_ids_set = vax_ids
+
+    # If we have symptom filters, get matching IDs from vaers_symptoms
     if symptom_term:
         pt = symptom_term.strip()
-        pipeline += [
-            {"$lookup": {"from": "vaers_symptoms", "localField": "VAERS_ID", "foreignField": "VAERS_ID", "as": "sym"}},
-            {"$unwind": "$sym"},
-            {"$match": {"$or": [
-                {"sym.SYMPTOM1": pt}, {"sym.SYMPTOM2": pt}, {"sym.SYMPTOM3": pt}, {"sym.SYMPTOM4": pt}, {"sym.SYMPTOM5": pt},
-            ]}},
-        ]
+        sym_match = {
+            "$or": [
+                {"SYMPTOM1": pt},
+                {"SYMPTOM2": pt},
+                {"SYMPTOM3": pt},
+                {"SYMPTOM4": pt},
+                {"SYMPTOM5": pt},
+            ]
+        }
+        sym_ids = set(
+            doc["VAERS_ID"]
+            for doc in db["vaers_symptoms"].find(sym_match, {"VAERS_ID": 1})
+            if doc.get("VAERS_ID") is not None
+        )
 
-    pipeline.append({"$group": {"_id": "$VAERS_ID"}})
+        # Intersect with existing base_ids if any
+        if base_ids_set is not None:
+            base_ids_set = base_ids_set.intersection(sym_ids)
+        else:
+            base_ids_set = sym_ids
+
+    # Now filter vaers_data by data_match and optionally by the join filter IDs
+    final_match = data_match.copy()
+    if base_ids_set is not None:
+        # Add VAERS_ID filter to restrict to join-filtered IDs
+        final_match["VAERS_ID"] = {"$in": list(base_ids_set)}
+
+    # Query vaers_data with all filters
+    projection = {"VAERS_ID": 1}
+    query = db["vaers_data"].find(final_match, projection)
+
     if base_id_cap and base_id_cap > 0:
-        pipeline.append({"$limit": int(base_id_cap)})
+        query = query.limit(int(base_id_cap))
 
-    cursor = db["vaers_data"].aggregate(pipeline, allowDiskUse=True)
-    return [doc["_id"] for doc in cursor if doc.get("_id") is not None]
+    return [doc["VAERS_ID"] for doc in query if doc.get("VAERS_ID") is not None]
 
 
 def _build_vax_marginals(base_ids: List[int], join_filters: Dict[str, Any]) -> Dict[Tuple[str, str], int]:
@@ -283,13 +311,20 @@ def signals():
                 "cached": False,
                 "filters": {"parsed": f.__dict__, "vaers_data_match": data_match, "join_filters": join_filters},
                 "N": 0,
-                "results": [],
+                "rows": [],
                 "message": "No reports matched the filters.",
             }
 
         vax_marg = _build_vax_marginals(base_ids, join_filters)
         sym_marg = _build_sym_marginals(base_ids, join_filters)
         pair_docs = _build_pairs(base_ids, join_filters)
+
+        # Calculate top 3 frequent adverse events if no symptom filter is used
+        top_symptoms: List[Dict[str, Any]] = []
+        if not join_filters.get("symptom_term"):
+            # Sort symptoms by count and get top 3
+            sorted_symptoms = sorted(sym_marg.items(), key=lambda x: x[1], reverse=True)[:3]
+            top_symptoms = [{"symptom": sym, "count": count} for sym, count in sorted_symptoms]
 
         rows: List[Dict[str, Any]] = []
         for doc in pair_docs:
@@ -314,7 +349,7 @@ def signals():
                 {
                     "vax_type": vax_type,
                     "vax_manu": vax_manu,
-                    "pt": pt,
+                    "symptom": pt,
                     "a": metrics["a"],
                     "b": metrics["b"],
                     "c": metrics["c"],
@@ -331,15 +366,15 @@ def signals():
 
         def sk(row: Dict[str, Any]):
             if sort_by == "a":
-                return (-row["a"], row["pt"])
+                return (-row["a"], row["symptom"])
             if sort_by == "ror":
-                return (-(row["ror"] or 0.0), row["pt"])
-            return (-(row["prr"] or 0.0), row["pt"])
+                return (-(row["ror"] or 0.0), row["symptom"])
+            return (-(row["prr"] or 0.0), row["symptom"])
 
         rows.sort(key=sk)
         rows = rows[:limit]
 
-        return {
+        result_dict = {
             "time_utc": datetime.utcnow().isoformat() + "Z",
             "cached": False,
             "filters": {"parsed": f.__dict__, "vaers_data_match": data_match, "join_filters": join_filters},
@@ -353,8 +388,14 @@ def signals():
                 "cc": cc,
                 "base_id_cap": base_id_cap,
             },
-            "results": rows,
+            "rows": rows,
         }
+
+        # Add top 3 symptoms if available
+        if top_symptoms:
+            result_dict["top_symptoms"] = top_symptoms
+
+        return result_dict
 
     result = compute()
     CACHE.set(cache_key, result, ttl_seconds=45)
