@@ -503,6 +503,18 @@ tr:hover td{
   overflow: hidden;
 }
 
+.signals-only-controls{
+  transition: opacity 0.2s ease;
+}
+
+.signals-only-controls[style*="display: none"]{
+  opacity: 0;
+}
+
+.signals-only-controls[style*="display: block"]{
+  opacity: 1;
+}
+
 /* Autocomplete dropdown styles */
 .autocomplete-wrapper{
   position: relative;

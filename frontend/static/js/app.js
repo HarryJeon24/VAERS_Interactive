@@ -255,6 +255,12 @@ class Autocomplete {
       trends: "Run Trends",
     };
     runBtn.textContent = runMap[tab] || "Run";
+
+    // Show/hide signals-specific controls
+    const signalsControls = $("#signalsControls");
+    if (signalsControls) {
+      signalsControls.style.display = tab === "signals" ? "block" : "none";
+    }
   }
 
   tabButtons.forEach((b) => {

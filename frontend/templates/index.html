@@ -149,45 +149,49 @@
           </div>
         </div>
 
-        <!-- Signals-specific controls (still okay to show here; only Signals uses them) -->
-        <div class="divider"></div>
+        <!-- Signals-specific controls -->
+        <div id="signalsControls" class="signals-only-controls" style="display: none; grid-column: 1 / -1;">
+          <div class="divider"></div>
 
-        <div class="field">
-          <label for="sort_by">Signals sort</label>
-          <select id="sort_by" name="sort_by">
-            <option value="prr">PRR</option>
-            <option value="ror">ROR</option>
-          </select>
-        </div>
+          <div class="grid">
+            <div class="field">
+              <label for="sort_by">Signals sort</label>
+              <select id="sort_by" name="sort_by">
+                <option value="prr">PRR</option>
+                <option value="ror">ROR</option>
+              </select>
+            </div>
 
-        <div class="field">
-          <label for="limit">Limit</label>
-          <input id="limit" name="limit" type="number" value="50" min="1" max="500" />
-        </div>
+            <div class="field">
+              <label for="limit">Limit</label>
+              <input id="limit" name="limit" type="number" value="50" min="1" max="500" />
+            </div>
 
-        <div class="field">
-          <label for="min_count">min_count (pair)</label>
-          <input id="min_count" name="min_count" type="number" value="5" min="0" />
-        </div>
+            <div class="field">
+              <label for="min_count">min_count (pair)</label>
+              <input id="min_count" name="min_count" type="number" value="5" min="0" />
+            </div>
 
-        <div class="field">
-          <label for="min_vax_total">min_vax_total</label>
-          <input id="min_vax_total" name="min_vax_total" type="number" value="20" min="0" />
-        </div>
+            <div class="field">
+              <label for="min_vax_total">min_vax_total</label>
+              <input id="min_vax_total" name="min_vax_total" type="number" value="20" min="0" />
+            </div>
 
-        <div class="field">
-          <label for="min_sym_total">min_sym_total</label>
-          <input id="min_sym_total" name="min_sym_total" type="number" value="20" min="0" />
-        </div>
+            <div class="field">
+              <label for="min_sym_total">min_sym_total</label>
+              <input id="min_sym_total" name="min_sym_total" type="number" value="20" min="0" />
+            </div>
 
-        <div class="field">
-          <label for="cc">Continuity corr (cc)</label>
-          <input id="cc" name="cc" type="number" value="0.5" step="0.1" min="0" />
-        </div>
+            <div class="field">
+              <label for="cc">Continuity corr (cc)</label>
+              <input id="cc" name="cc" type="number" value="0.5" step="0.1" min="0" />
+            </div>
 
-        <div class="field">
-          <label for="base_id_cap">base_id_cap</label>
-          <input id="base_id_cap" name="base_id_cap" type="number" value="0" min="0" />
+            <div class="field">
+              <label for="base_id_cap">base_id_cap</label>
+              <input id="base_id_cap" name="base_id_cap" type="number" value="0" min="0" />
+            </div>
+          </div>
         </div>
 
         <div class="actions">
