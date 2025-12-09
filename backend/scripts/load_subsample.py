@@ -174,12 +174,19 @@ def main():
         c.drop()
 
     print(f"[INFO] Loading into DB='{MONGO_DB}' at {MONGO_URI}")
-
+ 
     # DATA: one row per report (VAERS_ID)
     print(f"[INFO] Loading {CSV_DATA.name} -> vaers_data")
     data_docs = (normalize_row(r) for r in read_csv_rows(CSV_DATA))
     n1 = bulk_upsert(c_data, data_docs, key_fields=("VAERS_ID",), batch_size=2000)
     print(f"[OK] vaers_data upserts: {n1:,}")
+    
+    # SYMPTOMS: multiple rows per VAERS_ID; each row contains SYMPTOM1-5; practical key includes those fields
+    print(f"[INFO] Loading {CSV_SYM.name} -> vaers_symptoms")
+    sym_docs = (normalize_row(r) for r in read_csv_rows(CSV_SYM))
+    n3 = bulk_upsert(c_sym, sym_docs, key_fields=("VAERS_ID", "SYMPTOM1", "SYMPTOM2", "SYMPTOM3", "SYMPTOM4", "SYMPTOM5"), batch_size=3000)
+    print(f"[OK] vaers_symptoms upserts: {n3:,}")
+    
 
     # VAX: multiple rows per VAERS_ID; use (VAERS_ID, VAX_TYPE, VAX_MANU, VAX_NAME, VAX_LOT) as a practical key
     # (VAERS doesn’t provide an explicit row id; this is fine for dev.)
@@ -188,14 +195,11 @@ def main():
     n2 = bulk_upsert(c_vax, vax_docs, key_fields=("VAERS_ID", "VAX_TYPE", "VAX_MANU", "VAX_NAME", "VAX_LOT"), batch_size=3000)
     print(f"[OK] vaers_vax upserts: {n2:,}")
 
-    # SYMPTOMS: multiple rows per VAERS_ID; each row contains SYMPTOM1-5; practical key includes those fields
-    print(f"[INFO] Loading {CSV_SYM.name} -> vaers_symptoms")
-    sym_docs = (normalize_row(r) for r in read_csv_rows(CSV_SYM))
-    n3 = bulk_upsert(c_sym, sym_docs, key_fields=("VAERS_ID", "SYMPTOM1", "SYMPTOM2", "SYMPTOM3", "SYMPTOM4", "SYMPTOM5"), batch_size=3000)
-    print(f"[OK] vaers_symptoms upserts: {n3:,}")
+    
 
     # Indexes (dev-friendly)
     print("[INFO] Creating indexes...")
+    
     c_data.create_index([("VAERS_ID", 1)], unique=True)
     c_data.create_index([("YEAR", 1)])
     c_data.create_index([("STATE", 1)])
@@ -204,6 +208,12 @@ def main():
     c_data.create_index([("ONSET_DATE", 1)])
     c_data.create_index([("RECVDATE", 1)])
 
+    c_sym.create_index([("VAERS_ID", 1)])
+    c_sym.create_index([("YEAR", 1)])
+    c_sym.create_index([("SYMPTOM1", 1)])
+    #c_sym.create_index([("SYMPTOM_TEXT", "text")])  # optional (can be heavy)
+    
+
     c_vax.create_index([("VAERS_ID", 1)])
     c_vax.create_index([("YEAR", 1)])
     c_vax.create_index([("VAX_TYPE", 1)])
@@ -211,10 +221,7 @@ def main():
     c_vax.create_index([("VAX_DOSE_SERIES", 1)])
     c_vax.create_index([("VAX_DATE", 1)])
 
-    c_sym.create_index([("VAERS_ID", 1)])
-    c_sym.create_index([("YEAR", 1)])
-    c_sym.create_index([("SYMPTOM1", 1)])
-    c_sym.create_index([("SYMPTOM_TEXT", "text")])  # optional (can be heavy)
+    
 
     print("[OK] Done. Quick counts:")
     print("  vaers_data     =", c_data.estimated_document_count())
