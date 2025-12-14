@@ -37,17 +37,19 @@
       <div class="card-head">
         <h2>Filters</h2>
         <div class="card-subhead">
-          These constrain all tabs. (Signals has extra thresholds below.)
+          Filters shown depend on the active tab. (Signals has extra thresholds below.)
         </div>
       </div>
 
       <form id="filtersForm" class="grid" autocomplete="off">
-        <div class="field">
+        <!-- Year -->
+        <div class="field" data-tabs="signals,search,onset,outcomes">
           <label for="year">Year</label>
           <input id="year" name="year" type="number" placeholder="e.g., 2023" />
         </div>
 
-        <div class="field">
+        <!-- Sex -->
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
           <label for="sex">Sex</label>
           <select id="sex" name="sex">
             <option value="">Any</option>
@@ -57,22 +59,25 @@
           </select>
         </div>
 
-        <div class="field">
+        <!-- State (Search only) -->
+        <div class="field" data-tabs="search">
           <label for="state">State</label>
           <input id="state" name="state" type="text" placeholder="e.g., GA" maxlength="2" />
         </div>
 
-        <div class="field">
+        <!-- Age -->
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
           <label for="age_min">Age Min</label>
           <input id="age_min" name="age_min" type="number" step="0.1" placeholder="e.g., 18" />
         </div>
 
-        <div class="field">
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
           <label for="age_max">Age Max</label>
           <input id="age_max" name="age_max" type="number" step="0.1" placeholder="e.g., 45" />
         </div>
 
-        <div class="field">
+        <!-- Serious -->
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
           <label for="serious_only">Serious Only</label>
           <select id="serious_only" name="serious_only">
             <option value="">Any</option>
@@ -81,46 +86,61 @@
           </select>
         </div>
 
-        <div class="field">
+        <!-- Vaccine -->
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
           <label for="vax_type">Vaccine Type</label>
           <input id="vax_type" name="vax_type" type="text" placeholder="e.g., COVID19, FLU" />
         </div>
 
-        <div class="field">
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
           <label for="vax_manu">Vaccine Manufacturer</label>
           <input id="vax_manu" name="vax_manu" type="text" placeholder="e.g., PFIZER\\BIONTECH" />
         </div>
 
-        <div class="field">
+        <!-- Symptom Term (MedDRA PT) -->
+        <div class="field" data-tabs="search,onset,outcomes,trends">
           <label for="symptom_term">Symptom Term (MedDRA PT)</label>
           <input id="symptom_term" name="symptom_term" type="text" placeholder="e.g., Headache" />
         </div>
 
-        <div class="field">
+        <!-- Symptom text (Search only) -->
+        <div class="field" data-tabs="search">
           <label for="symptom_text">Symptom Text Contains</label>
           <input id="symptom_text" name="symptom_text" type="text" placeholder="free-text narrative search" />
         </div>
 
-        <div class="field">
+        <!-- Onset date range -->
+        <div class="field" data-tabs="search,onset,outcomes">
           <label for="onset_start">Onset start</label>
           <input id="onset_start" name="onset_start" type="date" />
         </div>
 
-        <div class="field">
+        <div class="field" data-tabs="search,onset,outcomes">
           <label for="onset_end">Onset end</label>
           <input id="onset_end" name="onset_end" type="date" />
         </div>
 
-        <!-- Collapsible Other Filter Options -->
-        <div class="divider"></div>
+        <!-- Onset days bounds -->
+        <div class="field" data-tabs="search,onset,outcomes">
+          <label for="onset_days_min">Onset days min</label>
+          <input id="onset_days_min" name="onset_days_min" type="number" placeholder="e.g., 0" />
+        </div>
 
-        <div class="field" style="grid-column: 1 / -1;">
+        <div class="field" data-tabs="search,onset,outcomes">
+          <label for="onset_days_max">Onset days max</label>
+          <input id="onset_days_max" name="onset_days_max" type="number" placeholder="e.g., 30" />
+        </div>
+
+        <!-- Search-only advanced filters -->
+        <div class="divider" data-tabs="search"></div>
+
+        <div class="field" data-tabs="search" style="grid-column: 1 / -1;">
           <button type="button" id="toggleOtherFilters" class="collapse-toggle">
             <span class="toggle-icon">▶</span> Other Filter Options
           </button>
         </div>
 
-        <div id="otherFiltersSection" class="collapsible-section" style="display: none; grid-column: 1 / -1;">
+        <div id="otherFiltersSection" class="collapsible-section" data-tabs="search" style="display: none; grid-column: 1 / -1;">
           <div class="grid">
             <div class="field">
               <label for="other_meds">Other Medications</label>
@@ -150,7 +170,7 @@
         </div>
 
         <!-- Signals-specific controls -->
-        <div id="signalsControls" class="signals-only-controls" style="display: none; grid-column: 1 / -1;">
+        <div id="signalsControls" class="signals-only-controls" data-tabs="signals" style="display: none; grid-column: 1 / -1;">
           <div class="divider"></div>
 
           <div class="grid">
@@ -285,57 +305,38 @@
         </div>
       </div>
 
-<!-- Onset panel -->
-<div class="panel" data-tab-panel="onset" hidden>
-  <div class="meta">
-    <span class="pill">N(base): <b id="onset_N">—</b></span>
-    <span class="pill">observations: <b id="onset_obs">—</b></span>
-    <span class="pill">time: <b id="onset_time">—</b></span>
-  </div>
+      <!-- Onset panel -->
+      <div class="panel" data-tab-panel="onset" hidden>
+        <div class="meta">
+          <span class="pill">N(base): <b id="onset_N">—</b></span>
+          <span class="pill">observations: <b id="onset_obs">—</b></span>
+          <span class="pill">time: <b id="onset_time">—</b></span>
+        </div>
 
-  <div class="panel-controls">
-    <div class="field inline">
-      <label for="onset_buckets">Buckets</label>
-      <input id="onset_buckets" type="number" min="5" max="60" value="30" />
-    </div>
+        <div class="panel-controls">
+          <div class="field inline">
+            <label for="onset_buckets">Buckets</label>
+            <input id="onset_buckets" type="number" min="5" max="60" value="30" />
+          </div>
 
-    <div class="field inline">
-      <label for="onset_clip_max">Clip max days</label>
-      <input id="onset_clip_max" type="number" min="0" value="180" />
-    </div>
+          <div class="field inline">
+            <label for="onset_clip_max">Clip max days</label>
+            <input id="onset_clip_max" type="number" min="0" value="180" />
+          </div>
 
-    <div class="field inline">
-      <label>Chart type</label>
-      <div class="onset-chart-toggle">
-        <button
-          type="button"
-          class="onset-chart-btn"
-          data-chart-type="hbar"
-        >
-          Bars (horizontal)
-        </button>
-        <button
-          type="button"
-          class="onset-chart-btn"
-          data-chart-type="vbar"
-        >
-          Bars (vertical)
-        </button>
-        <button
-          type="button"
-          class="onset-chart-btn"
-          data-chart-type="line"
-        >
-          Line
-        </button>
+          <div class="field inline">
+            <label>Chart type</label>
+            <div class="onset-chart-toggle">
+              <button type="button" class="onset-chart-btn" data-chart-type="hbar">Bars (horizontal)</button>
+              <button type="button" class="onset-chart-btn" data-chart-type="vbar">Bars (vertical)</button>
+              <button type="button" class="onset-chart-btn" data-chart-type="line">Line</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="onsetSummary" class="summary"></div>
+        <div id="onsetChart" class="bars"></div>
       </div>
-    </div>
-  </div>
-
-  <div id="onsetSummary" class="summary"></div>
-  <div id="onsetChart" class="bars"></div>
-</div>
-
 
       <!-- Outcomes panel -->
       <div class="panel" data-tab-panel="outcomes" hidden>
@@ -355,34 +356,21 @@
           <span class="pill">time: <b id="trends_time">—</b></span>
         </div>
 
-    <div class="panel-controls">
-      <div class="field inline">
-        <label for="trends_clip_months">Last N months (0=all)</label>
-        <input id="trends_clip_months" type="number" min="0" value="0" />
-      </div>
+        <div class="panel-controls">
+          <div class="field inline">
+            <label for="trends_clip_months">Last N months (0=all)</label>
+            <input id="trends_clip_months" type="number" min="0" value="0" />
+          </div>
 
-      <div class="field inline">
-        <label>Chart type</label>
-        <div class="trends-chart-toggle">
-          <button type="button"
-                  class="trends-chart-btn"
-                  data-chart-type="hbar">
-            Bars (horizontal)
-          </button>
-          <button type="button"
-                  class="trends-chart-btn"
-                  data-chart-type="vbar">
-            Bars (vertical)
-          </button>
-          <button type="button"
-                  class="trends-chart-btn"
-                  data-chart-type="line">
-            Line
-          </button>
+          <div class="field inline">
+            <label>Chart type</label>
+            <div class="trends-chart-toggle">
+              <button type="button" class="trends-chart-btn" data-chart-type="hbar">Bars (horizontal)</button>
+              <button type="button" class="trends-chart-btn" data-chart-type="vbar">Bars (vertical)</button>
+              <button type="button" class="trends-chart-btn" data-chart-type="line">Line</button>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-
 
         <div id="trendsChart" class="bars"></div>
       </div>

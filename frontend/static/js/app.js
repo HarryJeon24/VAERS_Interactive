@@ -1,12 +1,21 @@
-// ---------- Autocomplete Component ----------
+// ---------- Remote Autocomplete Component (searchable dropdown) ----------
 class Autocomplete {
   constructor(inputElement, options = {}) {
     this.input = inputElement;
-    this.options = options;
-    this.data = [];
+    this.options = {
+      apiEndpoint: null,      // e.g. "/api/filter-options/state"
+      queryParam: "q",        // backend uses ?q=
+      minChars: 2,            // start searching after N chars
+      limit: 50,              // max suggestions
+      debounceMs: 150,        // debounce typing
+      ...options,
+    };
+
     this.filteredData = [];
     this.selectedIndex = -1;
     this.isLoading = false;
+    this.lastQuery = "";
+    this._debounceTimer = null;
 
     this.init();
   }
@@ -30,76 +39,32 @@ class Autocomplete {
 
     // Close dropdown when clicking outside
     document.addEventListener("click", (e) => {
-      if (!wrapper.contains(e.target)) {
-        this.hideDropdown();
-      }
+      if (!wrapper.contains(e.target)) this.hideDropdown();
     });
-
-    // Load data if API endpoint is provided
-    if (this.options.apiEndpoint) {
-      this.loadData();
-    } else if (this.options.data) {
-      this.data = this.options.data;
-    }
   }
 
-  async loadData() {
-    this.isLoading = true;
-    // Don't show dropdown during initial load
-
-    try {
-      const response = await fetch(this.options.apiEndpoint);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const result = await response.json();
-      this.data = result.values || result.options || result || [];
-      this.isLoading = false;
-      console.log(`Loaded ${this.data.length} items for ${this.input.id}`);
-    } catch (error) {
-      console.error(`Failed to load autocomplete data for ${this.input.id}:`, error);
-      this.data = [];
-      this.isLoading = false;
+  handleFocus() {
+    // If there is already a value, show suggestions for it
+    const v = (this.input.value || "").trim();
+    if (v.length >= this.options.minChars) {
+      this.fetchAndRender(v);
+    } else {
+      // Do nothing for empty focus (avoid pulling huge lists)
+      this.hideDropdown();
     }
   }
 
   handleInput(e) {
-    const value = e.target.value.trim().toLowerCase();
+    const value = (e.target.value || "").trim();
 
-    // Don't show dropdown if no data available
-    if (this.data.length === 0) {
-      return;
-    }
-
-    if (value === "") {
-      this.filteredData = this.data.slice(0, 50); // Show first 50 items
-    } else {
-      this.filteredData = this.data.filter(item =>
-        item.toLowerCase().includes(value)
-      ).slice(0, 50); // Limit to 50 results
-    }
-
-    this.selectedIndex = -1;
-    this.renderDropdown();
-  }
-
-  handleFocus() {
-    // Don't show dropdown if still loading or no data available
-    if (this.isLoading) {
-      this.showLoading();
-      return;
-    }
-
-    if (this.data.length === 0) {
-      // Don't show dropdown if no data loaded
-      return;
-    }
-
-    if (this.input.value.trim() === "") {
-      this.filteredData = this.data.slice(0, 50);
-    } else {
-      this.handleInput({ target: this.input });
-    }
-    this.renderDropdown();
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(() => {
+      if (value.length < this.options.minChars) {
+        this.hideDropdown();
+        return;
+      }
+      this.fetchAndRender(value);
+    }, this.options.debounceMs);
   }
 
   handleKeydown(e) {
@@ -119,8 +84,8 @@ class Autocomplete {
         break;
 
       case "Enter":
-        e.preventDefault();
         if (this.selectedIndex >= 0) {
+          e.preventDefault();
           this.selectItem(this.filteredData[this.selectedIndex]);
         }
         break;
@@ -137,7 +102,6 @@ class Autocomplete {
       item.classList.toggle("highlighted", index === this.selectedIndex);
     });
 
-    // Scroll to selected item
     if (this.selectedIndex >= 0 && items[this.selectedIndex]) {
       items[this.selectedIndex].scrollIntoView({ block: "nearest" });
     }
@@ -146,43 +110,80 @@ class Autocomplete {
   selectItem(value) {
     this.input.value = value;
     this.hideDropdown();
-
-    // Trigger change event
     this.input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  renderDropdown() {
-    if (this.isLoading) {
-      this.showLoading();
+  async fetchAndRender(query) {
+    if (!this.options.apiEndpoint) return;
+    if (query === this.lastQuery && this.dropdown.classList.contains("show")) return;
+
+    this.lastQuery = query;
+    this.isLoading = true;
+    this.showLoading();
+
+    try {
+      const url = new URL(this.options.apiEndpoint, window.location.origin);
+      url.searchParams.set(this.options.queryParam, query);
+      url.searchParams.set("limit", String(this.options.limit));
+
+      const response = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const result = await response.json();
+
+      // Support several shapes: {values:[]}, {options:[]}, []
+      const values = result?.values || result?.options || result || [];
+      this.filteredData = Array.isArray(values) ? values.slice(0, this.options.limit) : [];
+
+      this.isLoading = false;
+      this.selectedIndex = -1;
+      this.renderDropdown();
+    } catch (error) {
+      console.error(`Autocomplete fetch failed for ${this.input.id}:`, error);
+      this.isLoading = false;
+      this.filteredData = [];
+      this.renderDropdown(true);
+    }
+  }
+
+  renderDropdown(isError = false) {
+    this.dropdown.innerHTML = "";
+
+    if (isError) {
+      const div = document.createElement("div");
+      div.className = "autocomplete-no-results";
+      div.textContent = "Failed to load suggestions";
+      this.dropdown.appendChild(div);
+      this.showDropdown();
       return;
     }
 
-    this.dropdown.innerHTML = "";
-
     if (this.filteredData.length === 0) {
-      const noResults = document.createElement("div");
-      noResults.className = "autocomplete-no-results";
-      noResults.textContent = "No results found";
-      this.dropdown.appendChild(noResults);
-    } else {
-      this.filteredData.forEach((item, index) => {
-        const div = document.createElement("div");
-        div.className = "autocomplete-item";
-        div.textContent = item;
-        div.addEventListener("click", () => this.selectItem(item));
-        this.dropdown.appendChild(div);
-      });
+      const div = document.createElement("div");
+      div.className = "autocomplete-no-results";
+      div.textContent = "No results found";
+      this.dropdown.appendChild(div);
+      this.showDropdown();
+      return;
     }
+
+    this.filteredData.forEach((item) => {
+      const div = document.createElement("div");
+      div.className = "autocomplete-item";
+      div.textContent = item;
+      div.addEventListener("click", () => this.selectItem(item));
+      this.dropdown.appendChild(div);
+    });
 
     this.showDropdown();
   }
 
   showLoading() {
     this.dropdown.innerHTML = "";
-    const loading = document.createElement("div");
-    loading.className = "autocomplete-loading";
-    loading.textContent = "Loading...";
-    this.dropdown.appendChild(loading);
+    const div = document.createElement("div");
+    div.className = "autocomplete-loading";
+    div.textContent = "Loading...";
+    this.dropdown.appendChild(div);
     this.showDropdown();
   }
 
@@ -212,15 +213,59 @@ class Autocomplete {
   const form = $("#filtersForm");
 
   let activeTab = localStorage.getItem("vaxscope_active_tab") || "signals";
-   let trendsChartType =
-    localStorage.getItem("vaxscope_trends_chart_type") || "hbar";
-   let onsetChartType =
-    localStorage.getItem("vaxscope_onset_chart_type") || "hbar";
-
+  let trendsChartType = localStorage.getItem("vaxscope_trends_chart_type") || "hbar";
+  let onsetChartType = localStorage.getItem("vaxscope_onset_chart_type") || "hbar";
 
   function setStatus(msg, type = "info") {
     statusEl.textContent = msg;
-    statusEl.dataset.type = type; // for CSS hooks if wanted
+    statusEl.dataset.type = type;
+  }
+
+  // Show/hide & enable/disable filters based on data-tabs
+  function updateFilterVisibility(tab) {
+    const tabbed = $$("[data-tabs]");
+    const preserveDisplay = new Set(["otherFiltersSection"]); // keep collapse behavior
+
+    tabbed.forEach((el) => {
+      const tabs = (el.dataset.tabs || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+      const shouldShow = tabs.includes(tab);
+
+      // Hide/show element
+      if (!shouldShow) {
+        el.style.display = "none";
+      } else {
+        // special cases
+        if (el.id === "signalsControls") {
+          el.style.display = "block";
+        } else if (preserveDisplay.has(el.id)) {
+          // do not force open; keep whatever collapse state is
+          // BUT if it was hidden due to another tab, keep it hidden until user expands
+          // (we do nothing here)
+        } else {
+          el.style.display = "";
+        }
+      }
+
+      // Disable inputs inside hidden blocks so they don't get sent
+      const controls = el.querySelectorAll("input, select, textarea, button");
+      controls.forEach((c) => {
+        // don't disable run/reset (not inside tabbed blocks anyway, but safe)
+        if (c.id === "runBtn" || c.id === "resetBtn") return;
+        c.disabled = !shouldShow;
+      });
+    });
+
+    // If not Search tab, ensure the collapsible advanced area is not "stuck open"
+    const otherSection = $("#otherFiltersSection");
+    if (otherSection && tab !== "search") {
+      otherSection.style.display = "none";
+      const icon = $(".toggle-icon", $("#toggleOtherFilters") || document);
+      if (icon) icon.classList.remove("expanded");
+    }
   }
 
   function setActiveTab(tab) {
@@ -237,6 +282,9 @@ class Autocomplete {
       const on = p.dataset.tabPanel === tab;
       p.hidden = !on;
     });
+
+    // Apply per-tab filter visibility
+    updateFilterVisibility(tab);
 
     const titleMap = {
       signals: "Signals",
@@ -255,12 +303,6 @@ class Autocomplete {
       trends: "Run Trends",
     };
     runBtn.textContent = runMap[tab] || "Run";
-
-    // Show/hide signals-specific controls
-    const signalsControls = $("#signalsControls");
-    if (signalsControls) {
-      signalsControls.style.display = tab === "signals" ? "block" : "none";
-    }
   }
 
   tabButtons.forEach((b) => {
@@ -282,39 +324,12 @@ class Autocomplete {
     const fd = new FormData(form);
     const params = new URLSearchParams();
 
-    // common filters
-    const keys = [
-      "year",
-      "sex",
-      "state",
-      "age_min",
-      "age_max",
-      "serious_only",
-      "vax_type",
-      "vax_manu",
-      "symptom_term",
-      "symptom_text",
-      "onset_start",
-      "onset_end",
-      "other_meds",
-      "cur_ill",
-      "history",
-      "prior_vax",
-      "allergies",
-    ];
-    keys.forEach((k) => params.set(k, (fd.get(k) || "").toString().trim()));
-
-    // signals knobs (harmless for other tabs; only signals endpoint uses them)
-    const sKeys = [
-      "sort_by",
-      "limit",
-      "min_count",
-      "min_vax_total",
-      "min_sym_total",
-      "cc",
-      "base_id_cap",
-    ];
-    sKeys.forEach((k) => params.set(k, (fd.get(k) || "").toString().trim()));
+    // Only include ENABLED inputs (hidden tab filters are disabled)
+    for (const [k, v] of fd.entries()) {
+      const el = form.querySelector(`[name="${CSS.escape(k)}"]`);
+      if (el && el.disabled) continue;
+      params.set(k, (v || "").toString().trim());
+    }
 
     return pruneEmpty(params);
   }
@@ -331,13 +346,28 @@ class Autocomplete {
 
   function fmtDate(x) {
     if (!x) return "";
-    // backend returns isoformat; keep as-is but shorten
     return String(x).replace("T", " ").replace("Z", "");
   }
 
   function isSeriousRow(d) {
     const flags = ["DIED", "HOSPITAL", "L_THREAT", "DISABLE", "BIRTH_DEFECT"];
     return flags.some((k) => String(d?.[k] || "").toUpperCase() === "Y");
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function num(x, digits = 0) {
+    if (x == null || x === "") return "";
+    const n = Number(x);
+    if (!Number.isFinite(n)) return String(x);
+    return digits ? n.toFixed(digits) : String(n);
   }
 
   // ---------- Render: Signals ----------
@@ -417,10 +447,7 @@ class Autocomplete {
       <div class="pill">avg: <b>${num(stats.avg, 2)}</b></div>
     `;
 
-    // cache payload so chart-type switch can re-render without refetch
-    if (typeof window !== "undefined") {
-      window._onsetLastData = data;
-    }
+    window._onsetLastData = data;
 
     const chart = $("#onsetChart");
     if (!chart) return;
@@ -429,17 +456,13 @@ class Autocomplete {
     const buckets = data?.buckets || [];
     if (!buckets.length) {
       chart.textContent = "No onset data for current filters.";
-      setStatus(
-        `Onset loaded: 0 buckets (obs=${data?.obs ?? 0}).`,
-        "ok"
-      );
+      setStatus(`Onset loaded: 0 buckets (obs=${data?.obs ?? 0}).`, "ok");
       return;
     }
 
     const maxN = Math.max(1, ...buckets.map((b) => b.n || 0));
     const type = onsetChartType || "hbar";
 
-    // reset base class and add mode-specific class
     chart.className = "bars";
     chart.classList.remove("bars-vertical", "line-chart");
     if (type === "vbar") chart.classList.add("bars-vertical");
@@ -452,7 +475,6 @@ class Autocomplete {
     };
 
     if (type === "hbar") {
-      // horizontal bars (same style as Trends)
       for (const b of buckets) {
         const label = labelForBucket(b);
         const value = b.n || 0;
@@ -470,19 +492,14 @@ class Autocomplete {
         chart.appendChild(row);
       }
     } else if (type === "vbar") {
-      // vertical bars (reuse your Trends vertical style)
       const wrapper = document.createElement("div");
       wrapper.className = "bars-v-wrapper";
-
-      const maxBarHeight = 200; // px
+      const maxBarHeight = 200;
 
       for (const b of buckets) {
         const label = labelForBucket(b);
         const value = b.n || 0;
-        const h = Math.max(
-          4,
-          Math.round((value / maxN) * maxBarHeight)
-        );
+        const h = Math.max(4, Math.round((value / maxN) * maxBarHeight));
 
         const col = document.createElement("div");
         col.className = "bars-v-col";
@@ -493,10 +510,8 @@ class Autocomplete {
         `;
         wrapper.appendChild(col);
       }
-
       chart.appendChild(wrapper);
     } else {
-      // line chart (same SVG approach as Trends)
       const svgNS = "http://www.w3.org/2000/svg";
       const width = 700;
       const height = 260;
@@ -509,12 +524,8 @@ class Autocomplete {
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.classList.add("trend-line-svg");
 
-      // axes
       const axis = document.createElementNS(svgNS, "path");
-      axis.setAttribute(
-        "d",
-        `M ${padX} ${padY} V ${height - padY} H ${width - padX}`
-      );
+      axis.setAttribute("d", `M ${padX} ${padY} V ${height - padY} H ${width - padX}`);
       axis.setAttribute("class", "trend-line-axis");
       axis.setAttribute("fill", "none");
       svg.appendChild(axis);
@@ -522,27 +533,19 @@ class Autocomplete {
       const points = buckets.map((b, i) => {
         const label = labelForBucket(b);
         const value = b.n || 0;
-        const x =
-          padX +
-          (buckets.length === 1
-            ? innerW / 2
-            : (innerW * i) / (buckets.length - 1));
+        const x = padX + (buckets.length === 1 ? innerW / 2 : (innerW * i) / (buckets.length - 1));
         const y = height - padY - (maxN ? (value / maxN) * innerH : 0);
         return { x, y, label, value };
       });
 
-      // line
       const path = document.createElementNS(svgNS, "path");
       let d = "";
-      points.forEach((pt, i) => {
-        d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y;
-      });
+      points.forEach((pt, i) => (d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y));
       path.setAttribute("d", d);
       path.setAttribute("class", "trend-line-path");
       path.setAttribute("fill", "none");
       svg.appendChild(path);
 
-      // dots + labels
       for (const pt of points) {
         const c = document.createElementNS(svgNS, "circle");
         c.setAttribute("cx", pt.x);
@@ -565,12 +568,8 @@ class Autocomplete {
       chart.appendChild(svg);
     }
 
-    setStatus(
-      `Onset loaded: ${buckets.length} buckets (obs=${data?.obs ?? 0}).`,
-      "ok"
-    );
+    setStatus(`Onset loaded: ${buckets.length} buckets (obs=${data?.obs ?? 0}).`, "ok");
   }
-
 
   // ---------- Render: Outcomes ----------
   function renderOutcomes(data) {
@@ -604,10 +603,7 @@ class Autocomplete {
     $("#trends_points").textContent = data?.points ?? "0";
     $("#trends_time").textContent = data?.time_utc ?? "";
 
-    // cache payload so chart-type switch can re-render without refetch
-    if (typeof window !== "undefined") {
-      window._trendsLastData = data;
-    }
+    window._trendsLastData = data;
 
     const chart = $("#trendsChart");
     if (!chart) return;
@@ -623,14 +619,12 @@ class Autocomplete {
     const maxN = Math.max(1, ...series.map((p) => p.n || 0));
     const type = trendsChartType || "hbar";
 
-    // reset base class and add mode-specific class
     chart.className = "bars";
     chart.classList.remove("bars-vertical", "line-chart");
     if (type === "vbar") chart.classList.add("bars-vertical");
     else if (type === "line") chart.classList.add("line-chart");
 
     if (type === "hbar") {
-      // ORIGINAL horizontal bar view
       for (const p of series) {
         const w = Math.round(((p.n || 0) / maxN) * 100);
         const row = document.createElement("div");
@@ -644,34 +638,27 @@ class Autocomplete {
         `;
         chart.appendChild(row);
       }
-} else if (type === "vbar") {
-  // NEW vertical bar view
-  const wrapper = document.createElement("div");
-  wrapper.className = "bars-v-wrapper";
+    } else if (type === "vbar") {
+      const wrapper = document.createElement("div");
+      wrapper.className = "bars-v-wrapper";
+      const maxBarHeight = 200;
 
-  const maxBarHeight = 200; // px, visual height of tallest bar
+      for (const p of series) {
+        const value = p.n || 0;
+        const h = Math.max(4, Math.round((value / maxN) * maxBarHeight));
 
-  for (const p of series) {
-    const value = p.n || 0;
-    const h = Math.max(
-      4, // minimum visible bar
-      Math.round((value / maxN) * maxBarHeight)
-    );
+        const col = document.createElement("div");
+        col.className = "bars-v-col";
+        col.innerHTML = `
+          <div class="bars-v-bar" style="height:${h}px"></div>
+          <div class="bars-v-val">${num(value)}</div>
+          <div class="bars-v-label">${escapeHtml(p.month ?? "")}</div>
+        `;
+        wrapper.appendChild(col);
+      }
 
-    const col = document.createElement("div");
-    col.className = "bars-v-col";
-    col.innerHTML = `
-      <div class="bars-v-bar" style="height:${h}px"></div>
-      <div class="bars-v-val">${num(value)}</div>
-      <div class="bars-v-label">${escapeHtml(p.month ?? "")}</div>
-    `;
-    wrapper.appendChild(col);
-  }
-
-  chart.appendChild(wrapper);
-}
-else {
-      // NEW line chart view (simple SVG)
+      chart.appendChild(wrapper);
+    } else {
       const svgNS = "http://www.w3.org/2000/svg";
       const width = 700;
       const height = 260;
@@ -684,41 +671,27 @@ else {
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.classList.add("trend-line-svg");
 
-      // axes
       const axis = document.createElementNS(svgNS, "path");
-      axis.setAttribute(
-        "d",
-        `M ${padX} ${padY} V ${height - padY} H ${width - padX}`
-      );
+      axis.setAttribute("d", `M ${padX} ${padY} V ${height - padY} H ${width - padX}`);
       axis.setAttribute("class", "trend-line-axis");
-      axis.setAttribute("fill", "none");   // ✅ prevent the triangle fill
+      axis.setAttribute("fill", "none");
       svg.appendChild(axis);
 
-
       const points = series.map((p, i) => {
-        const x =
-          padX +
-          (series.length === 1
-            ? innerW / 2
-            : (innerW * i) / (series.length - 1));
+        const x = padX + (series.length === 1 ? innerW / 2 : (innerW * i) / (series.length - 1));
         const value = p.n || 0;
         const y = height - padY - (maxN ? (value / maxN) * innerH : 0);
         return { x, y, p };
       });
 
-      // line
-const path = document.createElementNS(svgNS, "path");
-let d = "";
-points.forEach((pt, i) => {
-  d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y;
-});
-path.setAttribute("d", d);
-path.setAttribute("class", "trend-line-path");
-path.setAttribute("fill", "none");  
-svg.appendChild(path);
+      const path = document.createElementNS(svgNS, "path");
+      let d = "";
+      points.forEach((pt, i) => (d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y));
+      path.setAttribute("d", d);
+      path.setAttribute("class", "trend-line-path");
+      path.setAttribute("fill", "none");
+      svg.appendChild(path);
 
-
-      // dots + labels
       for (const pt of points) {
         const c = document.createElementNS(svgNS, "circle");
         c.setAttribute("cx", pt.x);
@@ -744,7 +717,6 @@ svg.appendChild(path);
     setStatus(`Trends loaded: ${series.length} months.`, "ok");
   }
 
-
   // ---------- Run per tab ----------
   async function runSignals(params) {
     const data = await fetchJSON("/api/signals", params);
@@ -752,7 +724,9 @@ svg.appendChild(path);
   }
 
   async function runSearch(params) {
-    // Search endpoint expects "limit" already; we reuse the same input.
+    // ensure a reasonable default limit for search
+    if (!params.has("limit")) params.set("limit", "50");
+
     const data = await fetchJSON("/api/search", params);
     renderSearch(data);
 
@@ -764,6 +738,8 @@ svg.appendChild(path);
 
   async function loadGeoMap() {
     const params = baseParamsFromForm();
+    if (!params.has("limit")) params.set("limit", "50");
+
     setStatus("Loading map...", "info");
 
     try {
@@ -781,68 +757,39 @@ svg.appendChild(path);
     const container = $("#geoMap");
     const legendContainer = $("#mapLegend");
 
-    console.log("renderGeoMap called with data:", data);
-
-    if (!container) {
-      console.error("Map container not found!");
-      return;
-    }
+    if (!container) return;
 
     container.innerHTML = "";
-    if (legendContainer) {
-      legendContainer.innerHTML = "";
-    }
+    if (legendContainer) legendContainer.innerHTML = "";
 
     const states = data?.states || [];
-    console.log(`Rendering map with ${states.length} states`);
-
     if (states.length === 0) {
       container.innerHTML = '<div class="autocomplete-no-results">No data available for current filters.</div>';
       return;
     }
 
-    // Get selected metric
     const metric = $("#mapMetric")?.value || "count";
-    console.log(`Selected metric: ${metric}`);
-
-    // Create data lookup
-    const dataByState = {};
-    states.forEach(s => {
-      dataByState[s.state] = s;
-    });
 
     // Determine value range for color scale
-    const values = states.map(s => s[metric]);
+    const values = states.map((s) => s[metric]);
     const minValue = Math.min(...values);
     const maxValue = Math.max(...values);
-    console.log(`Value range for ${metric}: ${minValue} - ${maxValue}`);
 
-    // Check if D3 is loaded
-    if (typeof d3 === 'undefined') {
-      console.error("D3.js is not loaded!");
-      container.innerHTML = '<div class="autocomplete-no-results">D3.js library failed to load. Please refresh the page.</div>';
+    if (typeof d3 === "undefined") {
+      container.innerHTML = '<div class="autocomplete-no-results">D3.js failed to load. Please refresh.</div>';
       return;
     }
 
-    // Color scale
     const colorScale = d3.scaleSequential()
       .domain([minValue, maxValue])
       .interpolator(d3.interpolateBlues);
 
-    // Render legend
-    if (legendContainer) {
-      renderLegend(legendContainer, metric, minValue, maxValue, colorScale);
-    }
+    if (legendContainer) renderLegend(legendContainer, metric, minValue, maxValue, colorScale);
 
-    // Load US TopoJSON and render map
-    console.log("Loading TopoJSON data...");
     d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json")
-      .then(us => {
-        console.log("TopoJSON data loaded successfully");
-
+      .then((us) => {
         const width = container.clientWidth || 960;
         const height = 500;
-        console.log(`Map dimensions: ${width}x${height}`);
 
         const svg = d3.select(container)
           .append("svg")
@@ -850,69 +797,51 @@ svg.appendChild(path);
           .attr("width", width)
           .attr("height", height);
 
-        // Use Albers USA projection for proper US map display
         const projection = d3.geoAlbersUsa()
           .scale(width * 1.3)
           .translate([width / 2, height / 2]);
 
         const path = d3.geoPath().projection(projection);
 
-        // Create tooltip
         const tooltip = d3.select("body").append("div")
           .attr("class", "map-tooltip")
           .style("opacity", 0)
           .style("position", "absolute");
 
-        // Draw states
         const features = topojson.feature(us, us.objects.states).features;
-        console.log(`Drawing ${features.length} state features`);
 
-        let matchedCount = 0;
         svg.append("g")
           .selectAll("path")
           .data(features)
           .join("path")
           .attr("d", path)
-          .attr("fill", d => {
+          .attr("fill", (d) => {
             const stateName = d.properties.name;
-            // Try to find state by name or abbreviation
-            const stateData = states.find(s => s.state === stateName || stateAbbrev(stateName) === s.state);
-            if (stateData) {
-              matchedCount++;
-              const color = colorScale(stateData[metric]);
-              console.log(`${stateName} (${stateData.state}): ${metric}=${stateData[metric]}, color=${color}`);
-              return color;
-            } else {
-              console.log(`${stateName}: No data found`);
-              return "#1a1a1a";
-            }
+            const stateData = states.find((s) => s.state === stateName || stateAbbrev(stateName) === s.state);
+            return stateData ? colorScale(stateData[metric]) : "#1a1a1a";
           })
           .attr("stroke", "#fff")
           .attr("stroke-width", 0.5)
           .on("mouseover", (event, d) => {
             const stateName = d.properties.name;
-            const stateData = states.find(s => s.state === stateName || stateAbbrev(stateName) === s.state);
+            const stateData = states.find((s) => s.state === stateName || stateAbbrev(stateName) === s.state);
+            if (!stateData) return;
 
-            if (stateData) {
-              tooltip.transition().duration(200).style("opacity", 1);
-              tooltip.html(`
-                <div class="tooltip-state">${escapeHtml(stateData.state)}</div>
-                <div class="tooltip-stat">Reports: ${num(stateData.count)}</div>
-                <div class="tooltip-stat">Serious: ${num(stateData.serious_count)} (${(stateData.serious_ratio * 100).toFixed(1)}%)</div>
-                <div class="tooltip-stat">Avg Age: ${num(stateData.avg_age, 1)}</div>
-              `)
-                .style("left", (event.pageX + 10) + "px")
-                .style("top", (event.pageY - 28) + "px");
-            }
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+              <div class="tooltip-state">${escapeHtml(stateData.state)}</div>
+              <div class="tooltip-stat">Reports: ${num(stateData.count)}</div>
+              <div class="tooltip-stat">Serious: ${num(stateData.serious_count)} (${(stateData.serious_ratio * 100).toFixed(1)}%)</div>
+              <div class="tooltip-stat">Avg Age: ${num(stateData.avg_age, 1)}</div>
+            `)
+              .style("left", (event.pageX + 10) + "px")
+              .style("top", (event.pageY - 28) + "px");
           })
           .on("mouseout", () => {
             tooltip.transition().duration(500).style("opacity", 0);
           });
-
-        console.log(`Map rendered successfully. Matched ${matchedCount} states out of ${features.length} features.`);
       })
-      .catch(error => {
-        console.error("Failed to load TopoJSON:", error);
+      .catch(() => {
         container.innerHTML = '<div class="autocomplete-no-results">Failed to load map visualization.</div>';
       });
   }
@@ -921,7 +850,7 @@ svg.appendChild(path);
     const metricLabels = {
       count: "Report Count",
       serious_ratio: "Serious Ratio",
-      avg_age: "Average Age"
+      avg_age: "Average Age",
     };
 
     container.innerHTML = `
@@ -933,22 +862,20 @@ svg.appendChild(path);
       </div>
     `;
 
-    // Create gradient
     const gradientEl = document.getElementById("legendGradient");
-    if (gradientEl) {
-      const steps = 10;
-      for (let i = 0; i < steps; i++) {
-        const value = minValue + (maxValue - minValue) * (i / (steps - 1));
-        const color = colorScale(value);
-        const div = document.createElement("div");
-        div.style.flex = "1";
-        div.style.background = color;
-        gradientEl.appendChild(div);
-      }
+    if (!gradientEl) return;
+
+    const steps = 10;
+    for (let i = 0; i < steps; i++) {
+      const value = minValue + (maxValue - minValue) * (i / (steps - 1));
+      const color = colorScale(value);
+      const div = document.createElement("div");
+      div.style.flex = "1";
+      div.style.background = color;
+      gradientEl.appendChild(div);
     }
   }
 
-  // State abbreviation helper
   function stateAbbrev(fullName) {
     const abbrevs = {
       "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
@@ -960,13 +887,12 @@ svg.appendChild(path);
       "New Mexico": "NM", "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH",
       "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
       "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT", "Vermont": "VT",
-      "Virginia": "VA", "Washington": "WA", "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY"
+      "Virginia": "VA", "Washington": "WA", "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY",
     };
     return abbrevs[fullName] || fullName;
   }
 
   async function runOnset(params) {
-    // Add panel controls
     const buckets = $("#onset_buckets")?.value || "30";
     const clipMax = $("#onset_clip_max")?.value || "180";
     params.set("buckets", buckets);
@@ -1006,23 +932,6 @@ svg.appendChild(path);
     }
   }
 
-  // ---------- misc ----------
-  function escapeHtml(s) {
-    return String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function num(x, digits = 0) {
-    if (x == null || x === "") return "";
-    const n = Number(x);
-    if (!Number.isFinite(n)) return String(x);
-    return digits ? n.toFixed(digits) : String(n);
-  }
-
   // ---------- events ----------
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1038,97 +947,71 @@ svg.appendChild(path);
   const mapMetric = $("#mapMetric");
   if (mapMetric) {
     mapMetric.addEventListener("change", () => {
-      if (currentMapData) {
-        renderGeoMap(currentMapData);
-      }
+      if (currentMapData) renderGeoMap(currentMapData);
     });
   }
 
   // Collapsible "Other Filter Options" toggle
   const toggleOtherFilters = $("#toggleOtherFilters");
   const otherFiltersSection = $("#otherFiltersSection");
-  const toggleIcon = $(".toggle-icon", toggleOtherFilters);
+  const toggleIcon = toggleOtherFilters ? $(".toggle-icon", toggleOtherFilters) : null;
 
   if (toggleOtherFilters && otherFiltersSection) {
     toggleOtherFilters.addEventListener("click", () => {
       const isHidden = otherFiltersSection.style.display === "none";
       otherFiltersSection.style.display = isHidden ? "block" : "none";
-      toggleIcon.classList.toggle("expanded", isHidden);
+      if (toggleIcon) toggleIcon.classList.toggle("expanded", isHidden);
     });
   }
 
-    // Trends chart-type toggle
+  // Trends chart-type toggle
   const trendsChartButtons = $$(".trends-chart-btn");
-
   function setTrendsChartType(type) {
     trendsChartType = type || "hbar";
     localStorage.setItem("vaxscope_trends_chart_type", trendsChartType);
 
     trendsChartButtons.forEach((btn) => {
-      btn.classList.toggle(
-        "active",
-        btn.dataset.chartType === trendsChartType
-      );
+      btn.classList.toggle("active", btn.dataset.chartType === trendsChartType);
     });
 
-    if (typeof window !== "undefined" && window._trendsLastData) {
-      renderTrends(window._trendsLastData);
-    }
+    if (window._trendsLastData) renderTrends(window._trendsLastData);
   }
 
   if (trendsChartButtons.length) {
     trendsChartButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        setTrendsChartType(btn.dataset.chartType);
-      });
+      btn.addEventListener("click", () => setTrendsChartType(btn.dataset.chartType));
     });
-
-    // apply stored preference on load
     setTrendsChartType(trendsChartType);
   }
 
-    // Onset chart-type toggle
+  // Onset chart-type toggle
   const onsetChartButtons = $$(".onset-chart-btn");
-
   function setOnsetChartType(type) {
     onsetChartType = type || "hbar";
     localStorage.setItem("vaxscope_onset_chart_type", onsetChartType);
 
     onsetChartButtons.forEach((btn) => {
-      btn.classList.toggle(
-        "active",
-        btn.dataset.chartType === onsetChartType
-      );
+      btn.classList.toggle("active", btn.dataset.chartType === onsetChartType);
     });
 
-    if (typeof window !== "undefined" && window._onsetLastData) {
-      renderOnset(window._onsetLastData);
-    }
+    if (window._onsetLastData) renderOnset(window._onsetLastData);
   }
 
   if (onsetChartButtons.length) {
     onsetChartButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        setOnsetChartType(btn.dataset.chartType);
-      });
+      btn.addEventListener("click", () => setOnsetChartType(btn.dataset.chartType));
     });
-
-    // apply stored preference on load
     setOnsetChartType(onsetChartType);
   }
 
-
-
-  // ---------- Autocomplete initialization ----------
-  // Initialize autocomplete for text fields
-  // Note: API endpoints will be created in the next step
-  // For now, these will work but show "Loading..." until endpoints are ready
-
+  // ---------- Autocomplete initialization (remote searchable dropdown) ----------
   const autocompleteFields = [
     { id: "state", endpoint: "/api/filter-options/state" },
     { id: "vax_type", endpoint: "/api/filter-options/vax_type" },
     { id: "vax_manu", endpoint: "/api/filter-options/vax_manu" },
     { id: "symptom_term", endpoint: "/api/filter-options/symptom_term" },
+
+    // Search-only advanced
     { id: "other_meds", endpoint: "/api/filter-options/other_meds" },
     { id: "cur_ill", endpoint: "/api/filter-options/cur_ill" },
     { id: "history", endpoint: "/api/filter-options/history" },
@@ -1138,9 +1021,8 @@ svg.appendChild(path);
 
   autocompleteFields.forEach(({ id, endpoint }) => {
     const input = $(`#${id}`);
-    if (input) {
-      new Autocomplete(input, { apiEndpoint: endpoint });
-    }
+    if (!input) return;
+    new Autocomplete(input, { apiEndpoint: endpoint, minChars: 2, limit: 50 });
   });
 
   // ---------- init ----------

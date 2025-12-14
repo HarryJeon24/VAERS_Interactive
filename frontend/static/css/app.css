@@ -323,27 +323,24 @@ tr:hover td{
   border-color:var(--accent);
 }
 
-
 .trends-chart-btn.active{
   background:rgba(110,168,255,0.18);
   color:var(--text);
   border-color:var(--accent);
 }
 
-
 /* Vertical trends bars */
 .bars-vertical{
-  height:260px;           /* give the chart area a fixed height */
+  height:260px;
   padding:12px 8px 4px;
 }
-
 
 .bars-vertical .bars-v-wrapper{
   display:flex;
   align-items:flex-end;
   gap:10px;
   width:100%;
-  height:100%;            /* take full height of the container */
+  height:100%;
 }
 
 .bars-v-col{
@@ -374,7 +371,6 @@ tr:hover td{
   color:var(--muted);
 }
 
-
 /* Line chart for trends */
 .line-chart .trend-line-svg{
   width:100%;
@@ -384,11 +380,11 @@ tr:hover td{
 .line-chart .trend-line-axis{
   stroke:rgba(255,255,255,0.25);
   stroke-width:1;
-  fill:none; 
+  fill:none;
 }
 
 .line-chart .trend-line-path{
-  fill:none;                     /* ✅ redundant but safe */
+  fill:none;
   stroke:var(--accent);
   stroke-width:2;
 }
@@ -401,8 +397,6 @@ tr:hover td{
   font-size:10px;
   fill:var(--muted);
 }
-
-
 
 .bar-row{
   display:grid;
@@ -712,4 +706,92 @@ tr:hover td{
   .field{ grid-column: span 1; }
   table{ min-width: 800px; }
   .kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+/* ===== Typeahead (searchable dropdown) ===== */
+.typeahead{
+  position: relative;
+  width: 100%;
+}
+.typeahead > input{
+  width: 100%;
+}
+.typeahead-list{
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.typeahead-item{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: rgba(255,255,255,0.92);
+}
+.typeahead-item:hover,
+.typeahead-item.active{
+  background: rgba(255,255,255,0.08);
+}
+.typeahead-main{
+  font-weight: 600;
+  line-height: 1.2;
+}
+.typeahead-meta{
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+  align-self: center;
+}
+
+/* ===== Simple bar list chart ===== */
+.barlist{
+  display: grid;
+  gap: 10px;
+}
+.barlist-row{
+  display: grid;
+  grid-template-columns: minmax(140px, 240px) 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 720px){
+  .barlist-row{
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-items: stretch;
+  }
+}
+.barlist-label{
+  color: rgba(255,255,255,0.85);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.barlist-barwrap{
+  height: 10px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.barlist-bar{
+  height: 100%;
+  background: rgba(110,168,255,0.75);
+  border-radius: 999px;
+}
+.barlist-value{
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+  font-size: 13px;
 }

@@ -34,7 +34,8 @@ def _parse_float(x: Optional[str]) -> Optional[float]:
 
 def _parse_date_yyyy_mm_dd(x: Optional[str]) -> Optional[datetime]:
     """
-    Expect YYYY-MM-DD from UI. Store as datetime in Mongo.
+    Expect YYYY-MM-DD from UI. Return datetime object.
+    NOTE: This only works for range queries if the corresponding Mongo field is a Date type.
     """
     if x is None:
         return None
@@ -65,7 +66,7 @@ class FilterSpec:
     age_min: Optional[float] = None
     age_max: Optional[float] = None
     onset_start: Optional[datetime] = None
-    onset_end: Optional[datetime] = None   # inclusive end handled as <= that date
+    onset_end: Optional[datetime] = None
 
     serious_only: bool = False             # any serious outcome flag == "Y"
     died_only: bool = False
@@ -81,7 +82,7 @@ class FilterSpec:
     # Join-side filters (used in later feature endpoints)
     vax_type: Optional[str] = None
     vax_manu: Optional[str] = None
-    symptom_term: Optional[str] = None     # for MedDRA/PT terms in SYMPTOM1-5
+    symptom_term: Optional[str] = None     # MedDRA PT term in SYMPTOM1-5
     symptom_text: Optional[str] = None     # free-text SYMPTOM_TEXT (expensive)
 
 
@@ -89,6 +90,7 @@ def from_request(req: Request) -> FilterSpec:
     args = req.args
 
     year = _parse_int(args.get("year"))
+
     sex = (args.get("sex") or "").strip().upper() or None
     if sex not in (None, "M", "F", "U"):
         sex = None
@@ -149,8 +151,10 @@ def build_vaers_data_match(f: FilterSpec) -> Dict[str, Any]:
     """
     m: Dict[str, Any] = {}
 
+    # IMPORTANT: year now maps to your computed year field, not YEAR column.
     if f.year is not None:
-        m["YEAR"] = f.year
+        m["RECVDATE_YEAR"] = f.year
+
     if f.sex is not None:
         m["SEX"] = f.sex
     if f.state is not None:
@@ -164,6 +168,7 @@ def build_vaers_data_match(f: FilterSpec) -> Dict[str, Any]:
             age_cond["$lte"] = f.age_max
         m["AGE_YRS"] = age_cond
 
+    # NOTE: this requires ONSET_DATE to be a Mongo Date type to work correctly.
     if f.onset_start is not None or f.onset_end is not None:
         dcond: Dict[str, Any] = {}
         if f.onset_start is not None:
@@ -232,7 +237,6 @@ def main() -> None:
     Run:
       python backend/services/filters.py
     """
-    # Minimal shim to mimic Flask Request.args
     class _FakeReq:
         def __init__(self, args: Dict[str, str]):
             self.args = args
