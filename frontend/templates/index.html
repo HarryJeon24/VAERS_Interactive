@@ -70,7 +70,7 @@
           <input id="age_max" name="age_max" type="number" step="0.1" placeholder="e.g., 45" />
         </div>
 
-        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
+        <div class="field" data-tabs="signals,search,onset,trends">
           <label for="serious_only" title="Serious: Death, Life Threatening, Hospitalized, Disabled, or Birth Defect. 'No' means explicitly non-serious.">Serious ⓘ</label>
           <select id="serious_only" name="serious_only">
             <option value="">Any</option>
@@ -79,7 +79,7 @@
           </select>
         </div>
 
-        <div class="field" data-tabs="search,outcomes">
+        <div class="field" data-tabs="search">
           <label for="died" title="Filter reports where the patient died.">Died ⓘ</label>
           <select id="died" name="died">
             <option value="">Any</option>
@@ -88,7 +88,7 @@
           </select>
         </div>
 
-        <div class="field" data-tabs="search,outcomes">
+        <div class="field" data-tabs="search">
           <label for="hospital" title="Filter reports where the patient was hospitalized.">Hospitalized ⓘ</label>
           <select id="hospital" name="hospital">
             <option value="">Any</option>
@@ -117,12 +117,12 @@
           <input id="limit" name="limit" type="number" value="50" min="1" max="1000" />
         </div>
 
-        <div class="field" data-tabs="outcomes">
+        <div class="field" data-tabs="none">
           <label for="onset_start" title="Filter by Onset Date (Start).">Onset Start ⓘ</label>
           <input id="onset_start" name="onset_start" type="date" />
         </div>
 
-        <div class="field" data-tabs="outcomes">
+        <div class="field" data-tabs="none">
           <label for="onset_end" title="Filter by Onset Date (End).">Onset End ⓘ</label>
           <input id="onset_end" name="onset_end" type="date" />
         </div>
