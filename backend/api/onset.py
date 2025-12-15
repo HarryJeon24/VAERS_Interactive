@@ -1,126 +1,124 @@
 from __future__ import annotations
 
+import math
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from flask import Blueprint, jsonify, request
 
 from backend.db.mongo import get_db
 from backend.services.filters import build_filters
+from backend.api.signals import _get_base_ids
 
-# Reuse the proven base-id join logic from signals (works with vax_type/vax_manu/symptom_term)
-from backend.api.signals import _get_base_ids  # noqa: E402
-
-bp = Blueprint("onset_api", __name__, url_prefix="/api")
+bp = Blueprint("onset", __name__, url_prefix="/api")
 
 
 @bp.get("/onset")
-def onset():
-    f, data_match, join_filters = build_filters(request)
+def get_onset_distribution():
+    """
+    Returns a strict day-by-day histogram of Onset Days.
+    No bins, no approximation.
+    Respects 'onset_days_max' filter. Defaults to 60 days if no filter.
+    """
+    try:
+        # 1. Build standard filters
+        f, data_match, join_filters = build_filters(request)
 
-    buckets = int(request.args.get("buckets", 30) or 30)
-    buckets = max(5, min(buckets, 60))
+        # 2. Manual Filter Logic
+        died_arg = request.args.get("died", "").strip().lower()
+        if died_arg == "true":
+            data_match["DIED"] = "Y"
+        elif died_arg == "false":
+            data_match["DIED"] = {"$ne": "Y"}
 
-    clip_max_days = int(request.args.get("clip_max_days", 180) or 180)
-    clip_max_days = max(0, clip_max_days)
+        hosp_arg = request.args.get("hospital", "").strip().lower()
+        if hosp_arg == "true":
+            data_match["HOSPITAL"] = "Y"
+        elif hosp_arg == "false":
+            data_match["HOSPITAL"] = {"$ne": "Y"}
 
-    base_id_cap = int(request.args.get("base_id_cap", 0) or 0)
-    base_ids = _get_base_ids(data_match, join_filters, base_id_cap=base_id_cap)
+        serious_arg = request.args.get("serious_only", "").strip().lower()
+        if serious_arg == "false":
+            for flag in ["DIED", "HOSPITAL", "L_THREAT", "DISABLE", "BIRTH_DEFECT"]:
+                data_match[flag] = {"$ne": "Y"}
 
-    db = get_db()
-    coll = db["vaers_data"]
+        # 3. Handle Join Filters
+        base_id_cap = int(request.args.get("base_id_cap", "0") or 0)
+        base_ids = _get_base_ids(data_match, join_filters, base_id_cap=base_id_cap)
 
-    if not base_ids:
-        return jsonify(
+        if base_ids is not None and not base_ids:
+            return jsonify({"stats": {}, "days": [], "obs": 0, "N_base": 0, "time_utc": datetime.utcnow().isoformat()})
+
+        match = data_match
+        if base_ids is not None: match = {"VAERS_ID": {"$in": base_ids}}
+
+        # 4. Determine Date Limit
+        # If user provides a limit, use it. If not, default to 60 days to prevent rendering 10,000 bars.
+        user_max = request.args.get("onset_days_max")
+        if user_max and user_max.strip():
+            try:
+                limit_days = int(user_max)
+            except ValueError:
+                limit_days = 60
+        else:
+            limit_days = 60
+
+        db = get_db()
+        coll = db["vaers_data"]
+        N_base = coll.count_documents(match)
+
+        # 5. Pipeline: Calculate Days -> Group By Day -> Sort
+        pipeline = [
+            {"$match": match},
             {
-                "time_utc": datetime.utcnow().isoformat() + "Z",
-                "N_base": 0,
-                "obs": 0,
-                "buckets": [],
-                "stats": {"min": None, "max": None, "avg": None},
-            }
-        )
-
-    # Compute NUMDAYS from (ONSET_DATE - VAX_DATE) in days (date fields were parsed at load time)
-    day_ms = 86400000
-
-    match = {
-        "VAERS_ID": {"$in": base_ids},
-        "VAX_DATE": {"$ne": None},
-        "ONSET_DATE": {"$ne": None},
-    }
-
-    pipeline_values = [
-        {"$match": match},
-        {
-            "$project": {
-                "_id": 0,
-                "numdays": {
-                    "$trunc": {
-                        "$divide": [
-                            {"$subtract": ["$ONSET_DATE", "$VAX_DATE"]},
-                            day_ms,
+                "$addFields": {
+                    "_vax_dt": {"$convert": {"input": "$VAX_DATE", "to": "date", "onError": None, "onNull": None}},
+                    "_onset_dt": {"$convert": {"input": "$ONSET_DATE", "to": "date", "onError": None, "onNull": None}}
+                }
+            },
+            {
+                "$addFields": {
+                    "numdays": {
+                        "$cond": [
+                            {"$and": [{"$ne": ["$_vax_dt", None]}, {"$ne": ["$_onset_dt", None]}]},
+                            {"$dateDiff": {"startDate": "$_vax_dt", "endDate": "$_onset_dt", "unit": "day"}},
+                            None
                         ]
                     }
                 }
+            },
+            # Strict filter: Non-negative and within limit
+            {"$match": {"numdays": {"$gte": 0, "$lte": limit_days}}},
+            # Group by exact day
+            {"$group": {"_id": "$numdays", "n": {"$sum": 1}}},
+            {"$sort": {"_id": 1}}
+        ]
+
+        results = list(coll.aggregate(pipeline, allowDiskUse=True))
+
+        # 6. Post-process stats
+        days = [{"day": r["_id"], "n": r["n"]} for r in results]
+
+        obs = sum(d["n"] for d in days)
+        if obs > 0:
+            # Weighted average for stats
+            total_days = sum(d["day"] * d["n"] for d in days)
+            avg = total_days / obs
+            stats = {
+                "min": days[0]["day"],
+                "max": days[-1]["day"],
+                "avg": round(avg, 2)
             }
-        },
-    ]
+        else:
+            stats = {"min": 0, "max": 0, "avg": 0}
 
-    # Optional clipping (keeps charts readable)
-    if clip_max_days > 0:
-        pipeline_values.append({"$match": {"numdays": {"$gte": 0, "$lte": clip_max_days}}})
-
-    values = [d["numdays"] for d in coll.aggregate(pipeline_values, allowDiskUse=True) if d.get("numdays") is not None]
-    obs = len(values)
-
-    if obs == 0:
-        return jsonify(
-            {
-                "time_utc": datetime.utcnow().isoformat() + "Z",
-                "N_base": len(base_ids),
-                "obs": 0,
-                "buckets": [],
-                "stats": {"min": None, "max": None, "avg": None},
-            }
-        )
-
-    vmin = min(values)
-    vmax = max(values)
-    avg = sum(values) / obs
-
-    # Build histogram buckets in Python for simplicity (dev subsample size)
-    # Equal-width buckets over [vmin, vmax] (or [0, clip_max_days] when clipped)
-    lo = 0 if (clip_max_days > 0) else vmin
-    hi = clip_max_days if (clip_max_days > 0) else vmax
-    if hi <= lo:
-        hi = lo + 1
-
-    width = (hi - lo) / buckets
-    if width <= 0:
-        width = 1
-
-    counts = [0] * buckets
-    for x in values:
-        if x < lo or x > hi:
-            continue
-        idx = int((x - lo) / width)
-        if idx >= buckets:
-            idx = buckets - 1
-        if idx < 0:
-            idx = 0
-        counts[idx] += 1
-
-    out_buckets = []
-    for i, n in enumerate(counts):
-        b_lo = int(lo + i * width)
-        b_hi = int(lo + (i + 1) * width - 1)
-        out_buckets.append({"lo": b_lo, "hi": b_hi, "n": n})
-
-    return jsonify(
-        {
-            "time_utc": datetime.utcnow().isoformat() + "Z",
-            "N_base": len(base_ids),
+        return jsonify({
+            "stats": stats,
+            "days": days,
             "obs": obs,
-            "stats": {"min": vmin, "max": vmax, "avg": avg},
-            "buckets": out_buckets,
-        }
-    )
+            "N_base": N_base,
+            "time_utc": datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

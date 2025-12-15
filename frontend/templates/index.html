@@ -117,12 +117,12 @@
           <input id="limit" name="limit" type="number" value="50" min="1" max="1000" />
         </div>
 
-        <div class="field" data-tabs="onset,outcomes">
+        <div class="field" data-tabs="outcomes">
           <label for="onset_start" title="Filter by Onset Date (Start).">Onset Start ⓘ</label>
           <input id="onset_start" name="onset_start" type="date" />
         </div>
 
-        <div class="field" data-tabs="onset,outcomes">
+        <div class="field" data-tabs="outcomes">
           <label for="onset_end" title="Filter by Onset Date (End).">Onset End ⓘ</label>
           <input id="onset_end" name="onset_end" type="date" />
         </div>
@@ -275,16 +275,6 @@
         </div>
 
         <div class="panel-controls">
-          <div class="field inline">
-            <label for="onset_buckets">Buckets</label>
-            <input id="onset_buckets" type="number" min="5" max="60" value="30" />
-          </div>
-
-          <div class="field inline">
-            <label for="onset_clip_max">Clip max days</label>
-            <input id="onset_clip_max" type="number" min="0" value="180" />
-          </div>
-
           <div class="field inline">
             <label>Chart type</label>
             <div class="onset-chart-toggle">
