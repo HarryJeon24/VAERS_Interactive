@@ -17,8 +17,7 @@ bp = Blueprint("onset", __name__, url_prefix="/api")
 def get_onset_distribution():
     """
     Returns a strict day-by-day histogram of Onset Days.
-    No bins, no approximation.
-    Respects 'onset_days_max' filter. Defaults to 60 days if no filter.
+    Respects both 'onset_days_min' and 'onset_days_max' filters.
     """
     try:
         # 1. Build standard filters
@@ -52,22 +51,33 @@ def get_onset_distribution():
         match = data_match
         if base_ids is not None: match = {"VAERS_ID": {"$in": base_ids}}
 
-        # 4. Determine Date Limit
-        # If user provides a limit, use it. If not, default to 60 days to prevent rendering 10,000 bars.
-        user_max = request.args.get("onset_days_max")
-        if user_max and user_max.strip():
-            try:
-                limit_days = int(user_max)
-            except ValueError:
-                limit_days = 60
-        else:
-            limit_days = 60
+        # 4. Determine Date Limits (Min & Max)
+        # Default Max is 60 if not specified
+        user_max = request.args.get("onset_days_max", "").strip()
+        try:
+            limit_max = int(user_max) if user_max else 60
+        except ValueError:
+            limit_max = 60
+
+        # Default Min is 0 if not specified
+        user_min = request.args.get("onset_days_min", "").strip()
+        try:
+            limit_min = int(user_min) if user_min else 0
+        except ValueError:
+            limit_min = 0
+
+        # Safety: ensure limits are non-negative (onset can't be negative for this chart)
+        limit_min = max(0, limit_min)
+
+        # If user explicitly sets Min > Max (logic error), return empty
+        if limit_min > limit_max:
+            return jsonify({"stats": {}, "days": [], "obs": 0, "N_base": 0, "time_utc": datetime.utcnow().isoformat()})
 
         db = get_db()
         coll = db["vaers_data"]
         N_base = coll.count_documents(match)
 
-        # 5. Pipeline: Calculate Days -> Group By Day -> Sort
+        # 5. Pipeline: Calculate Days -> Filter Range -> Group
         pipeline = [
             {"$match": match},
             {
@@ -87,8 +97,8 @@ def get_onset_distribution():
                     }
                 }
             },
-            # Strict filter: Non-negative and within limit
-            {"$match": {"numdays": {"$gte": 0, "$lte": limit_days}}},
+            # STRICT FILTER: Must be within [limit_min, limit_max]
+            {"$match": {"numdays": {"$gte": limit_min, "$lte": limit_max}}},
             # Group by exact day
             {"$group": {"_id": "$numdays", "n": {"$sum": 1}}},
             {"$sort": {"_id": 1}}
@@ -101,7 +111,6 @@ def get_onset_distribution():
 
         obs = sum(d["n"] for d in days)
         if obs > 0:
-            # Weighted average for stats
             total_days = sum(d["day"] * d["n"] for d in days)
             avg = total_days / obs
             stats = {

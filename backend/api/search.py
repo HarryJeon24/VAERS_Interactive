@@ -45,32 +45,27 @@ def _has_join_filters(join_filters: Dict[str, Any]) -> bool:
 def search_reports():
     """
     GET /api/search
-    Report-level search over vaers_data using shared filters.
+    Report-level search over vaers_data.
 
-    Updates:
-    - Supports died=true/false
-    - Supports hospital=true/false
-    - Strict non-serious check when serious_only=false
+    Fixes:
+    - Applies 'Onset Days' filter BEFORE limiting results to ensure accuracy.
+    - Supports died/hospital/strict-serious logic.
     """
     f, data_match, join_filters = build_filters(request)
 
-    # --- Manually handle Died / Hospital / Strict Non-Serious ---
-
-    # 1. Died
+    # --- 1. Manual Filter Logic ---
     died_arg = request.args.get("died", "").strip().lower()
     if died_arg == "true":
         data_match["DIED"] = "Y"
     elif died_arg == "false":
         data_match["DIED"] = {"$ne": "Y"}
 
-    # 2. Hospital
     hosp_arg = request.args.get("hospital", "").strip().lower()
     if hosp_arg == "true":
         data_match["HOSPITAL"] = "Y"
     elif hosp_arg == "false":
         data_match["HOSPITAL"] = {"$ne": "Y"}
 
-    # 3. Serious = False (Strict Non-Serious)
     serious_arg = request.args.get("serious_only", "").strip().lower()
     if serious_arg == "false":
         serious_flags = ["DIED", "HOSPITAL", "L_THREAT", "DISABLE", "BIRTH_DEFECT"]
@@ -80,19 +75,37 @@ def search_reports():
             else:
                 data_match[flag] = {"$ne": "Y"}
 
-    # Limit (default 50, max 1000)
+    # --- 2. Onset Days Filters ---
+    # We must detect these to decide pipeline order
+    onset_min_raw = request.args.get("onset_days_min", "").strip()
+    onset_max_raw = request.args.get("onset_days_max", "").strip()
+
+    has_onset_filter = False
+    onset_min = None
+    onset_max = None
+
+    if onset_min_raw:
+        try:
+            onset_min = float(onset_min_raw)
+            has_onset_filter = True
+        except ValueError:
+            pass
+
+    if onset_max_raw:
+        try:
+            onset_max = float(onset_max_raw)
+            has_onset_filter = True
+        except ValueError:
+            pass
+
+    # --- 3. Limit & Cap ---
     limit = request.args.get("limit", "50")
     try:
         limit_n = max(1, min(1000, int(limit)))
     except ValueError:
         limit_n = 50
 
-    # Cap to prevent giant $in arrays for search
-    base_id_cap_raw = request.args.get("base_id_cap", "0") or "0"
-    try:
-        base_id_cap = int(base_id_cap_raw)
-    except ValueError:
-        base_id_cap = 0
+    base_id_cap = int(request.args.get("base_id_cap", "0") or 0)
 
     # ---- Year normalization ----
     if "YEAR" in data_match and "RECVDATE_YEAR" not in data_match:
@@ -110,20 +123,10 @@ def search_reports():
         base_ids = _get_base_ids(data_match, join_filters, base_id_cap=effective_cap)
 
         if not base_ids:
-            return jsonify(
-                {
-                    "time_utc": datetime.utcnow().isoformat() + "Z",
-                    "filters": {
-                        "parsed": f.__dict__,
-                        "vaers_data_match": data_match,
-                        "join_filters": join_filters,
-                        "uses_join_prefilter": bool(has_join),
-                    },
-                    "count": 0,
-                    "limit": limit_n,
-                    "results": [],
-                }
-            )
+            return jsonify({
+                "time_utc": datetime.utcnow().isoformat() + "Z",
+                "count": 0, "limit": limit_n, "results": []
+            })
 
         count = len(base_ids)
         match: Dict[str, Any] = {"VAERS_ID": {"$in": base_ids}}
@@ -136,11 +139,61 @@ def search_reports():
 
     sort_year_field = "RECVDATE_YEAR" if ("RECVDATE_YEAR" in match or "RECVDATE_YEAR" in data_match) else "YEAR"
 
-    # Pipeline optimized to exclude unused fields
+    # --- 4. Build Pipeline ---
     pipeline: List[Dict[str, Any]] = [
-        {"$match": match},
+        {"$match": match}
+    ]
+
+    # STAGE A: DATE CALCULATION
+    # We define this stage but only add it early if needed.
+    date_calc_stages = [
+        {
+            "$addFields": {
+                "_vax_dt": {"$convert": {"input": "$VAX_DATE", "to": "date", "onError": None, "onNull": None}},
+                "_onset_dt": {"$convert": {"input": "$ONSET_DATE", "to": "date", "onError": None, "onNull": None}},
+            }
+        },
+        {
+            "$addFields": {
+                "ONSET_DAYS": {
+                    "$cond": [
+                        {"$and": [{"$ne": ["$_vax_dt", None]}, {"$ne": ["$_onset_dt", None]}]},
+                        {
+                            "$dateDiff": {
+                                "startDate": "$_vax_dt",
+                                "endDate": "$_onset_dt",
+                                "unit": "day",
+                            }
+                        },
+                        None,
+                    ]
+                }
+            }
+        }
+    ]
+
+    # STAGE B: FILTERING (The Fix)
+    # If users filtered by days (e.g. max 20), we MUST calculate & filter BEFORE limiting.
+    if has_onset_filter:
+        pipeline.extend(date_calc_stages)
+
+        onset_match = {}
+        if onset_min is not None:
+            onset_match["$gte"] = onset_min
+        if onset_max is not None:
+            onset_match["$lte"] = onset_max
+
+        pipeline.append({"$match": {"ONSET_DAYS": onset_match}})
+
+    # STAGE C: SORT & LIMIT
+    # Now that bad data is removed, we can safely sort and limit.
+    pipeline.extend([
         {"$sort": {sort_year_field: 1, "VAERS_ID": 1}},
-        {"$limit": limit_n},
+        {"$limit": limit_n}
+    ])
+
+    # STAGE D: LOOKUPS (Expensive)
+    pipeline.extend([
         {"$lookup": {"from": "vaers_vax", "localField": "VAERS_ID", "foreignField": "VAERS_ID", "as": "_vax"}},
         {"$lookup": {"from": "vaers_symptoms", "localField": "VAERS_ID", "foreignField": "VAERS_ID", "as": "_sym"}},
         {
@@ -179,52 +232,39 @@ def search_reports():
                         [None, ""],
                     ]
                 },
-                "_vax_dt": {"$convert": {"input": "$VAX_DATE", "to": "date", "onError": None, "onNull": None}},
-                "_onset_dt": {"$convert": {"input": "$ONSET_DATE", "to": "date", "onError": None, "onNull": None}},
             }
-        },
-        {
-            "$addFields": {
-                "ONSET_DAYS": {
-                    "$cond": [
-                        {"$and": [{"$ne": ["$_vax_dt", None]}, {"$ne": ["$_onset_dt", None]}]},
-                        {
-                            "$dateDiff": {
-                                "startDate": "$_vax_dt",
-                                "endDate": "$_onset_dt",
-                                "unit": "day",
-                            }
-                        },
-                        None,
-                    ]
-                }
-            }
-        },
-        {
-            "$project": {
-                "_id": 1,
-                "VAERS_ID": 1,
-                "RECVDATE_YEAR": 1,
-                "YEAR": 1,
-                "SEX": 1,
-                "AGE_YRS": 1,
-                "STATE": 1,
-                "VAX_DATE": 1,
-                "ONSET_DATE": 1,
-                "ONSET_DAYS": 1,
-                "DIED": 1,
-                "HOSPITAL": 1,
-                "L_THREAT": 1,
-                "DISABLE": 1,
-                "BIRTH_DEFECT": 1,
-                "SYMPTOM_TEXT": 1,
-                "VAX_TYPES": 1,
-                "VAX_MANUS": 1,
-                "SYMPTOM_TERMS": 1,
-                # Removed: OTHER_MEDS, CUR_ILL, HISTORY, PRIOR_VAX, ALLERGIES
-            }
-        },
-    ]
+        }
+    ])
+
+    # STAGE E: Fallback Calc
+    # If we didn't calculate dates earlier (because no filter was set), we do it now.
+    if not has_onset_filter:
+        pipeline.extend(date_calc_stages)
+
+    # STAGE F: Final Project
+    pipeline.append({
+        "$project": {
+            "_id": 1,
+            "VAERS_ID": 1,
+            "RECVDATE_YEAR": 1,
+            "YEAR": 1,
+            "SEX": 1,
+            "AGE_YRS": 1,
+            "STATE": 1,
+            "VAX_DATE": 1,
+            "ONSET_DATE": 1,
+            "ONSET_DAYS": 1,
+            "DIED": 1,
+            "HOSPITAL": 1,
+            "L_THREAT": 1,
+            "DISABLE": 1,
+            "BIRTH_DEFECT": 1,
+            "SYMPTOM_TEXT": 1,
+            "VAX_TYPES": 1,
+            "VAX_MANUS": 1,
+            "SYMPTOM_TERMS": 1,
+        }
+    })
 
     cursor = coll.aggregate(pipeline, allowDiskUse=True)
     docs = [_json_safe(d) for d in cursor]
