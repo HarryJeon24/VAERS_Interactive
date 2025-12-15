@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VaxScope (Dev)</title>
   <link rel="stylesheet" href="/static/css/app.css" />
-  <!-- D3.js for map visualization -->
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://d3js.org/topojson.v3.min.js"></script>
 </head>
@@ -32,25 +31,22 @@
   </header>
 
   <main class="container">
-    <!-- Filters -->
     <section class="card">
       <div class="card-head">
         <h2>Filters</h2>
         <div class="card-subhead">
-          Filters shown depend on the active tab. (Signals has extra thresholds below.)
+          Hover over labels for details. Filters shown depend on the active tab.
         </div>
       </div>
 
       <form id="filtersForm" class="grid" autocomplete="off">
-        <!-- Year -->
         <div class="field" data-tabs="signals,search,onset,outcomes">
-          <label for="year">Year</label>
+          <label for="year" title="Filter by the year the report was received.">Year ⓘ</label>
           <input id="year" name="year" type="number" placeholder="e.g., 2023" />
         </div>
 
-        <!-- Sex -->
         <div class="field" data-tabs="signals,search,onset,outcomes,trends">
-          <label for="sex">Sex</label>
+          <label for="sex" title="Patient sex (M=Male, F=Female, U=Unknown).">Sex ⓘ</label>
           <select id="sex" name="sex">
             <option value="">Any</option>
             <option value="M">M</option>
@@ -59,117 +55,88 @@
           </select>
         </div>
 
-        <!-- State (Search only) -->
         <div class="field" data-tabs="search">
-          <label for="state">State</label>
+          <label for="state" title="2-letter US State abbreviation (e.g., CA, NY).">State ⓘ</label>
           <input id="state" name="state" type="text" placeholder="e.g., GA" maxlength="2" />
         </div>
 
-        <!-- Age -->
         <div class="field" data-tabs="signals,search,onset,outcomes,trends">
-          <label for="age_min">Age Min</label>
+          <label for="age_min" title="Minimum age of the patient in years.">Age Min ⓘ</label>
           <input id="age_min" name="age_min" type="number" step="0.1" placeholder="e.g., 18" />
         </div>
 
         <div class="field" data-tabs="signals,search,onset,outcomes,trends">
-          <label for="age_max">Age Max</label>
+          <label for="age_max" title="Maximum age of the patient in years.">Age Max ⓘ</label>
           <input id="age_max" name="age_max" type="number" step="0.1" placeholder="e.g., 45" />
         </div>
 
-        <!-- Serious -->
         <div class="field" data-tabs="signals,search,onset,outcomes,trends">
-          <label for="serious_only">Serious Only</label>
+          <label for="serious_only" title="Serious: Death, Life Threatening, Hospitalized, Disabled, or Birth Defect. 'No' means explicitly non-serious.">Serious ⓘ</label>
           <select id="serious_only" name="serious_only">
+            <option value="">Any</option>
+            <option value="true">Yes</option>
+            <option value="false">No (Non-Serious Only)</option>
+          </select>
+        </div>
+
+        <div class="field" data-tabs="search,outcomes">
+          <label for="died" title="Filter reports where the patient died.">Died ⓘ</label>
+          <select id="died" name="died">
             <option value="">Any</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
           </select>
         </div>
 
-        <!-- Vaccine -->
-        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
-          <label for="vax_type">Vaccine Type</label>
-          <input id="vax_type" name="vax_type" type="text" placeholder="e.g., COVID19, FLU" />
+        <div class="field" data-tabs="search,outcomes">
+          <label for="hospital" title="Filter reports where the patient was hospitalized.">Hospitalized ⓘ</label>
+          <select id="hospital" name="hospital">
+            <option value="">Any</option>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
         </div>
 
         <div class="field" data-tabs="signals,search,onset,outcomes,trends">
-          <label for="vax_manu">Vaccine Manufacturer</label>
-          <input id="vax_manu" name="vax_manu" type="text" placeholder="e.g., PFIZER\\BIONTECH" />
+          <label for="vax_type" title="Vaccine Type abbreviation (e.g., COVID19, FLU, MMR).">Vaccine Type ⓘ</label>
+          <input id="vax_type" name="vax_type" type="text" placeholder="e.g., COVID19" />
         </div>
 
-        <!-- Symptom Term (MedDRA PT) -->
+        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
+          <label for="vax_manu" title="Vaccine Manufacturer (e.g., PFIZER, MODERNA).">Manufacturer ⓘ</label>
+          <input id="vax_manu" name="vax_manu" type="text" placeholder="e.g., PFIZER" />
+        </div>
+
         <div class="field" data-tabs="search,onset,outcomes,trends">
-          <label for="symptom_term">Symptom Term (MedDRA PT)</label>
+          <label for="symptom_term" title="Standardized MedDRA Preferred Term (e.g., Pyrexia, Headache).">Symptom Term ⓘ</label>
           <input id="symptom_term" name="symptom_term" type="text" placeholder="e.g., Headache" />
         </div>
 
-        <!-- Symptom text (Search only) -->
-        <div class="field" data-tabs="search">
-          <label for="symptom_text">Symptom Text Contains</label>
-          <input id="symptom_text" name="symptom_text" type="text" placeholder="free-text narrative search" />
+        <div class="field" data-tabs="search,signals">
+          <label for="limit" title="Number of results to return (max 1000).">Limit ⓘ</label>
+          <input id="limit" name="limit" type="number" value="50" min="1" max="1000" />
         </div>
 
-        <!-- Onset date range -->
-        <div class="field" data-tabs="search,onset,outcomes">
-          <label for="onset_start">Onset start</label>
+        <div class="field" data-tabs="onset,outcomes">
+          <label for="onset_start" title="Filter by Onset Date (Start).">Onset Start ⓘ</label>
           <input id="onset_start" name="onset_start" type="date" />
         </div>
 
-        <div class="field" data-tabs="search,onset,outcomes">
-          <label for="onset_end">Onset end</label>
+        <div class="field" data-tabs="onset,outcomes">
+          <label for="onset_end" title="Filter by Onset Date (End).">Onset End ⓘ</label>
           <input id="onset_end" name="onset_end" type="date" />
         </div>
 
-        <!-- Onset days bounds -->
         <div class="field" data-tabs="search,onset,outcomes">
-          <label for="onset_days_min">Onset days min</label>
+          <label for="onset_days_min" title="Minimum days between vaccination and symptom onset.">Onset Days Min ⓘ</label>
           <input id="onset_days_min" name="onset_days_min" type="number" placeholder="e.g., 0" />
         </div>
 
         <div class="field" data-tabs="search,onset,outcomes">
-          <label for="onset_days_max">Onset days max</label>
+          <label for="onset_days_max" title="Maximum days between vaccination and symptom onset.">Onset Days Max ⓘ</label>
           <input id="onset_days_max" name="onset_days_max" type="number" placeholder="e.g., 30" />
         </div>
 
-        <!-- Search-only advanced filters -->
-        <div class="divider" data-tabs="search"></div>
-
-        <div class="field" data-tabs="search" style="grid-column: 1 / -1;">
-          <button type="button" id="toggleOtherFilters" class="collapse-toggle">
-            <span class="toggle-icon">▶</span> Other Filter Options
-          </button>
-        </div>
-
-        <div id="otherFiltersSection" class="collapsible-section" data-tabs="search" style="display: none; grid-column: 1 / -1;">
-          <div class="grid">
-            <div class="field">
-              <label for="other_meds">Other Medications</label>
-              <input id="other_meds" name="other_meds" type="text" placeholder="e.g., ibuprofen, metformin" />
-            </div>
-
-            <div class="field">
-              <label for="cur_ill">Current Illness</label>
-              <input id="cur_ill" name="cur_ill" type="text" placeholder="e.g., hypertension, diabetes" />
-            </div>
-
-            <div class="field">
-              <label for="history">Medical History</label>
-              <input id="history" name="history" type="text" placeholder="e.g., asthma, arthritis" />
-            </div>
-
-            <div class="field">
-              <label for="prior_vax">Previous Vaccinations</label>
-              <input id="prior_vax" name="prior_vax" type="text" placeholder="e.g., influenza, covid-19" />
-            </div>
-
-            <div class="field">
-              <label for="allergies">Allergies</label>
-              <input id="allergies" name="allergies" type="text" placeholder="e.g., penicillin, shellfish" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Signals-specific controls -->
         <div id="signalsControls" class="signals-only-controls" data-tabs="signals" style="display: none; grid-column: 1 / -1;">
           <div class="divider"></div>
 
@@ -180,11 +147,6 @@
                 <option value="prr">PRR</option>
                 <option value="ror">ROR</option>
               </select>
-            </div>
-
-            <div class="field">
-              <label for="limit">Limit</label>
-              <input id="limit" name="limit" type="number" value="50" min="1" max="500" />
             </div>
 
             <div class="field">
@@ -221,14 +183,12 @@
       </form>
     </section>
 
-    <!-- Results -->
     <section class="card">
       <div class="card-head">
         <h2 id="resultsTitle">Signals</h2>
         <div id="status" class="status">Ready.</div>
       </div>
 
-      <!-- Signals panel -->
       <div class="panel" data-tab-panel="signals">
         <div class="meta">
           <span class="pill">N: <b id="signals_N">—</b></span>
@@ -258,7 +218,6 @@
         </div>
       </div>
 
-      <!-- Search panel -->
       <div class="panel" data-tab-panel="search" hidden>
         <div class="meta">
           <span class="pill">count: <b id="search_count">—</b></span>
@@ -266,7 +225,6 @@
           <span class="pill">time: <b id="search_time">—</b></span>
         </div>
 
-        <!-- Geographic Visualization -->
         <div class="geo-section">
           <h3 class="section-title">Geographic Distribution</h3>
 
@@ -296,7 +254,11 @@
                 <th>STATE</th>
                 <th>VAX_DATE</th>
                 <th>ONSET_DATE</th>
+                <th>ONSET_DAYS</th>
                 <th>Serious</th>
+                <th>VAX_TYPE(s)</th>
+                <th>VAX_MANU(s)</th>
+                <th>SYMPTOM_TERM(s)</th>
                 <th>SYMPTOM_TEXT (snippet)</th>
               </tr>
             </thead>
@@ -305,7 +267,6 @@
         </div>
       </div>
 
-      <!-- Onset panel -->
       <div class="panel" data-tab-panel="onset" hidden>
         <div class="meta">
           <span class="pill">N(base): <b id="onset_N">—</b></span>
@@ -338,7 +299,6 @@
         <div id="onsetChart" class="bars"></div>
       </div>
 
-      <!-- Outcomes panel -->
       <div class="panel" data-tab-panel="outcomes" hidden>
         <div class="meta">
           <span class="pill">N(base): <b id="outcomes_N">—</b></span>
@@ -348,7 +308,6 @@
         <div class="kpis" id="outcomesKpis"></div>
       </div>
 
-      <!-- Trends panel -->
       <div class="panel" data-tab-panel="trends" hidden>
         <div class="meta">
           <span class="pill">N(base): <b id="trends_N">—</b></span>

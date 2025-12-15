@@ -31,7 +31,7 @@ def _json_safe(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _has_join_filters(join_filters: Dict[str, Any]) -> bool:
-    # join_filters typically contains: vax_type, vax_manu, symptom_term, symptom_text
+    # join_filters typically contains: vax_type, vax_manu, symptom_term
     for v in (join_filters or {}).values():
         if v is None:
             continue
@@ -47,29 +47,54 @@ def search_reports():
     GET /api/search
     Report-level search over vaers_data using shared filters.
 
-    Notes:
-    - If join-side filters are present (vax_type/vax_manu/symptom_term/symptom_text), we first compute base_ids
-      (VAERS_IDs) that satisfy those joins, then fetch report rows from vaers_data.
-    - If no join-side filters are present, we query vaers_data directly without materializing base_ids.
+    Updates:
+    - Supports died=true/false
+    - Supports hospital=true/false
+    - Strict non-serious check when serious_only=false
     """
     f, data_match, join_filters = build_filters(request)
 
+    # --- Manually handle Died / Hospital / Strict Non-Serious ---
+
+    # 1. Died
+    died_arg = request.args.get("died", "").strip().lower()
+    if died_arg == "true":
+        data_match["DIED"] = "Y"
+    elif died_arg == "false":
+        data_match["DIED"] = {"$ne": "Y"}
+
+    # 2. Hospital
+    hosp_arg = request.args.get("hospital", "").strip().lower()
+    if hosp_arg == "true":
+        data_match["HOSPITAL"] = "Y"
+    elif hosp_arg == "false":
+        data_match["HOSPITAL"] = {"$ne": "Y"}
+
+    # 3. Serious = False (Strict Non-Serious)
+    serious_arg = request.args.get("serious_only", "").strip().lower()
+    if serious_arg == "false":
+        serious_flags = ["DIED", "HOSPITAL", "L_THREAT", "DISABLE", "BIRTH_DEFECT"]
+        for flag in serious_flags:
+            if flag not in data_match:
+                data_match[flag] = {"$ne": "Y"}
+            else:
+                data_match[flag] = {"$ne": "Y"}
+
+    # Limit (default 50, max 1000)
     limit = request.args.get("limit", "50")
     try:
-        limit_n = max(1, min(200, int(limit)))
+        limit_n = max(1, min(1000, int(limit)))
     except ValueError:
         limit_n = 50
 
-    # Cap to prevent giant $in arrays for search (signals can be heavier; search should stay snappy)
+    # Cap to prevent giant $in arrays for search
     base_id_cap_raw = request.args.get("base_id_cap", "0") or "0"
     try:
         base_id_cap = int(base_id_cap_raw)
     except ValueError:
         base_id_cap = 0
 
-    # ---- Year normalization (defensive) ----
-    # Some datasets store report-year as RECVDATE_YEAR rather than YEAR.
-    # If filters.py still emits YEAR, translate it here so search stays correct.
+    # ---- Year normalization ----
     if "YEAR" in data_match and "RECVDATE_YEAR" not in data_match:
         data_match["RECVDATE_YEAR"] = data_match.pop("YEAR")
 
@@ -77,15 +102,11 @@ def search_reports():
     coll = db["vaers_data"]
 
     has_join = _has_join_filters(join_filters)
-
     base_ids: Optional[List[int]] = None
     count: int = 0
 
     if has_join:
-        # If caller didn't set a cap, apply a safe cap for this endpoint.
-        # (Avoid exceeding BSON limits / slow queries with massive $in arrays.)
         effective_cap = base_id_cap if base_id_cap > 0 else 50000
-
         base_ids = _get_base_ids(data_match, join_filters, base_id_cap=effective_cap)
 
         if not base_ids:
@@ -96,7 +117,7 @@ def search_reports():
                         "parsed": f.__dict__,
                         "vaers_data_match": data_match,
                         "join_filters": join_filters,
-                        "base_id_cap_effective": effective_cap,
+                        "uses_join_prefilter": bool(has_join),
                     },
                     "count": 0,
                     "limit": limit_n,
@@ -113,16 +134,9 @@ def search_reports():
         except Exception:
             count = 0
 
-    # Choose sort field if present
     sort_year_field = "RECVDATE_YEAR" if ("RECVDATE_YEAR" in match or "RECVDATE_YEAR" in data_match) else "YEAR"
 
-    # Build pipeline:
-    # - match
-    # - sort
-    # - limit
-    # - lookups for filterables (vax + symptoms)
-    # - computed onset days
-    # - project (small + useful)
+    # Pipeline optimized to exclude unused fields
     pipeline: List[Dict[str, Any]] = [
         {"$match": match},
         {"$sort": {sort_year_field: 1, "VAERS_ID": 1}},
@@ -131,7 +145,6 @@ def search_reports():
         {"$lookup": {"from": "vaers_symptoms", "localField": "VAERS_ID", "foreignField": "VAERS_ID", "as": "_sym"}},
         {
             "$addFields": {
-                # aggregate vaccine filterables
                 "VAX_TYPES": {
                     "$setDifference": [
                         {"$setUnion": [[], {"$map": {"input": "$_vax", "as": "v", "in": "$$v.VAX_TYPE"}}]},
@@ -144,7 +157,6 @@ def search_reports():
                         [None, ""],
                     ]
                 },
-                # symptoms collection is usually 1 doc per VAERS_ID; take first and union SYMPTOM1..5
                 "SYMPTOM_TERMS": {
                     "$setDifference": [
                         {
@@ -167,7 +179,6 @@ def search_reports():
                         [None, ""],
                     ]
                 },
-                # compute onset days if both dates parse
                 "_vax_dt": {"$convert": {"input": "$VAX_DATE", "to": "date", "onError": None, "onNull": None}},
                 "_onset_dt": {"$convert": {"input": "$ONSET_DATE", "to": "date", "onError": None, "onNull": None}},
             }
@@ -193,7 +204,6 @@ def search_reports():
             "$project": {
                 "_id": 1,
                 "VAERS_ID": 1,
-                # year (keep both if present; frontend can choose)
                 "RECVDATE_YEAR": 1,
                 "YEAR": 1,
                 "SEX": 1,
@@ -201,28 +211,17 @@ def search_reports():
                 "STATE": 1,
                 "VAX_DATE": 1,
                 "ONSET_DATE": 1,
-                "RECVDATE": 1,
                 "ONSET_DAYS": 1,
-                # serious flags
                 "DIED": 1,
                 "HOSPITAL": 1,
                 "L_THREAT": 1,
                 "DISABLE": 1,
                 "BIRTH_DEFECT": 1,
-                "RECOVD": 1,
-                # narratives + form
                 "SYMPTOM_TEXT": 1,
-                "FORM_VERS": 1,
-                # additional filterable fields (can be long, but useful)
-                "OTHER_MEDS": 1,
-                "CUR_ILL": 1,
-                "HISTORY": 1,
-                "PRIOR_VAX": 1,
-                "ALLERGIES": 1,
-                # joined filterables
                 "VAX_TYPES": 1,
                 "VAX_MANUS": 1,
                 "SYMPTOM_TERMS": 1,
+                # Removed: OTHER_MEDS, CUR_ILL, HISTORY, PRIOR_VAX, ALLERGIES
             }
         },
     ]
@@ -247,16 +246,7 @@ def search_reports():
 
 
 def main() -> None:
-    """
-    Self-test runner that starts a tiny Flask app just for this blueprint.
-
-    Run:
-      python backend/api/search.py
-    Then open:
-      http://127.0.0.1:5001/api/search?year=2023&sex=F&serious_only=true&limit=10
-    """
     from flask import Flask
-
     app = Flask(__name__)
     app.register_blueprint(bp)
     app.run(host="127.0.0.1", port=5001, debug=True)

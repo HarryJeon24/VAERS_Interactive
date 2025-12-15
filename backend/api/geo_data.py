@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request
 from backend.db.mongo import get_db
 from backend.services.filters import build_filters
 from backend.api.signals import _get_base_ids
+from datetime import datetime
 
 bp = Blueprint("geo_data", __name__, url_prefix="/api")
 
@@ -15,29 +16,40 @@ bp = Blueprint("geo_data", __name__, url_prefix="/api")
 def get_state_counts():
     """
     Get comprehensive state statistics for map visualization.
-    Applies the same filters as search endpoint.
-
-    Returns:
-        {
-            "states": [
-                {
-                    "state": "CA",
-                    "count": 1234,
-                    "serious_count": 456,
-                    "serious_ratio": 0.369,
-                    "avg_age": 45.2
-                },
-                ...
-            ],
-            "total": 5678,
-            "time_utc": "..."
-        }
+    Applies the same filters as search endpoint, including new manual
+    handlers for died/hospital/strict-serious.
     """
-    from datetime import datetime
-
     try:
         f, data_match, join_filters = build_filters(request)
         db = get_db()
+
+        # --- Manual Filter Logic (Must match search.py) ---
+
+        # 1. Died
+        died_arg = request.args.get("died", "").strip().lower()
+        if died_arg == "true":
+            data_match["DIED"] = "Y"
+        elif died_arg == "false":
+            data_match["DIED"] = {"$ne": "Y"}
+
+        # 2. Hospital
+        hosp_arg = request.args.get("hospital", "").strip().lower()
+        if hosp_arg == "true":
+            data_match["HOSPITAL"] = "Y"
+        elif hosp_arg == "false":
+            data_match["HOSPITAL"] = {"$ne": "Y"}
+
+        # 3. Serious = False (Strict Non-Serious)
+        serious_arg = request.args.get("serious_only", "").strip().lower()
+        if serious_arg == "false":
+            serious_flags = ["DIED", "HOSPITAL", "L_THREAT", "DISABLE", "BIRTH_DEFECT"]
+            for flag in serious_flags:
+                if flag not in data_match:
+                     data_match[flag] = {"$ne": "Y"}
+                else:
+                     data_match[flag] = {"$ne": "Y"}
+
+        # --------------------------------------------------
 
         base_id_cap = int(request.args.get("base_id_cap", "0") or 0)
 
