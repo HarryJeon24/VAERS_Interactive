@@ -1,4 +1,4 @@
-// ---------- Autocomplete Component (Hybrid: Dynamic + Defaults) ----------
+// ---------- Autocomplete Component (Hybrid) ----------
 class Autocomplete {
   constructor(inputElement, options = {}) {
     this.input = inputElement;
@@ -477,6 +477,7 @@ class Autocomplete {
     setStatus(`Trends loaded.`, "ok");
   }
 
+  // FIXED: Added Label Skipping Logic
   function renderLineChart(container, points, maxN) {
     const svgNS = "http://www.w3.org/2000/svg";
     const width = 700, height = 260;
@@ -486,6 +487,7 @@ class Autocomplete {
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.classList.add("trend-line-svg");
 
+    // Axis
     const axis = document.createElementNS(svgNS, "path");
     axis.setAttribute("d", `M ${padX} ${padY} V ${height - padY} H ${width - padX}`);
     axis.setAttribute("class", "trend-line-axis");
@@ -498,6 +500,7 @@ class Autocomplete {
       ...pt
     }));
 
+    // Line Path
     const path = document.createElementNS(svgNS, "path");
     let d = "";
     mapped.forEach((pt, i) => { d += (i === 0 ? "M " : " L ") + pt.x + " " + pt.y; });
@@ -506,7 +509,11 @@ class Autocomplete {
     path.setAttribute("fill", "none");
     svg.appendChild(path);
 
-    for (const pt of mapped) {
+    // Label Skipping Strategy: Aim for ~12 labels max
+    const stride = Math.ceil(points.length / 12);
+
+    for (let i = 0; i < mapped.length; i++) {
+      const pt = mapped[i];
       const c = document.createElementNS(svgNS, "circle");
       c.setAttribute("cx", pt.x);
       c.setAttribute("cy", pt.y);
@@ -517,12 +524,15 @@ class Autocomplete {
       c.appendChild(title);
       svg.appendChild(c);
 
-      const label = document.createElementNS(svgNS, "text");
-      label.setAttribute("x", pt.x);
-      label.setAttribute("y", height - padY + 12);
-      label.setAttribute("text-anchor", "middle");
-      label.textContent = pt.label;
-      svg.appendChild(label);
+      // Only draw label if it matches the stride (avoid overlap)
+      if (i % stride === 0) {
+        const label = document.createElementNS(svgNS, "text");
+        label.setAttribute("x", pt.x);
+        label.setAttribute("y", height - padY + 12);
+        label.setAttribute("text-anchor", "middle");
+        label.textContent = pt.label;
+        svg.appendChild(label);
+      }
     }
     container.appendChild(svg);
   }
@@ -595,12 +605,25 @@ class Autocomplete {
   async function runSearch(p) { renderSearch(await fetchJSON("/api/search", p)); loadGeoMap(); }
   async function runOnset(p) { renderOnset(await fetchJSON("/api/onset", p)); }
   async function runOutcomes(p) { renderOutcomes(await fetchJSON("/api/outcomes", p)); }
-  async function runTrends(p) { p.set("clip_months", $("#trends_clip_months")?.value||"0"); renderTrends(await fetchJSON("/api/trends", p)); }
+  async function runTrends(p) {
+    // ADDED: pass clip months directly to backend
+    p.set("clip_months", $("#trends_clip_months")?.value||"12");
+    renderTrends(await fetchJSON("/api/trends", p));
+  }
 
   async function runActive() {
     const p = baseParamsFromForm();
     const meaningful = ["year","sex","state","age_min","age_max","serious_only","died","hospital","vax_type","vax_manu","symptom_term"];
     if (!meaningful.some(k => p.has(k) && p.get(k).trim()) && !confirm("Running with NO filters may be slow. Continue?")) return;
+
+    // WARNING CHECK for Trend 0
+    if (activeTab === "trends") {
+      const clip = $("#trends_clip_months")?.value;
+      if (clip === "0") {
+        if (!confirm("Showing trends for ALL time may clutter the chart and take longer. Continue?")) return;
+      }
+    }
+
     setStatus("Loading…", "info");
     try {
       if (activeTab === "signals") return await runSignals(p);
@@ -620,16 +643,11 @@ class Autocomplete {
     btns.forEach(b => b.addEventListener("click", () => {
       const t = b.dataset.chartType;
       localStorage.setItem(storeKey, t);
-      setter(t); // Update global var in scope if needed, or re-render
-      // Simpler: just re-click or re-render
-      // We need to update global var
       if(sel.includes("trends")) trendsChartType = t; else onsetChartType = t;
-
       btns.forEach(x => x.classList.toggle("active", x.dataset.chartType===t));
       const data = sel.includes("trends") ? window._trendsLastData : window._onsetLastData;
       if(data) sel.includes("trends") ? renderTrends(data) : renderOnset(data);
     }));
-    // Init active state
     btns.forEach(x => x.classList.toggle("active", x.dataset.chartType===(sel.includes("trends")?trendsChartType:onsetChartType)));
   };
 

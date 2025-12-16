@@ -117,12 +117,12 @@
           <input id="limit" name="limit" type="number" value="50" min="1" max="1000" />
         </div>
 
-        <div class="field" data-tabs="none">
+        <div class="field" data-tabs="outcomes">
           <label for="onset_start" title="Filter by Onset Date (Start).">Onset Start ⓘ</label>
           <input id="onset_start" name="onset_start" type="date" />
         </div>
 
-        <div class="field" data-tabs="none">
+        <div class="field" data-tabs="outcomes">
           <label for="onset_end" title="Filter by Onset Date (End).">Onset End ⓘ</label>
           <input id="onset_end" name="onset_end" type="date" />
         </div>
@@ -139,7 +139,6 @@
 
         <div id="signalsControls" class="signals-only-controls" data-tabs="signals" style="display: none; grid-column: 1 / -1;">
           <div class="divider"></div>
-
           <div class="grid">
             <div class="field">
               <label for="sort_by">Signals sort</label>
@@ -148,27 +147,22 @@
                 <option value="ror">ROR</option>
               </select>
             </div>
-
             <div class="field">
               <label for="min_count">min_count (pair)</label>
               <input id="min_count" name="min_count" type="number" value="5" min="0" />
             </div>
-
             <div class="field">
               <label for="min_vax_total">min_vax_total</label>
               <input id="min_vax_total" name="min_vax_total" type="number" value="20" min="0" />
             </div>
-
             <div class="field">
               <label for="min_sym_total">min_sym_total</label>
               <input id="min_sym_total" name="min_sym_total" type="number" value="20" min="0" />
             </div>
-
             <div class="field">
               <label for="cc">Continuity corr (cc)</label>
               <input id="cc" name="cc" type="number" value="0.5" step="0.1" min="0" />
             </div>
-
             <div class="field">
               <label for="base_id_cap">base_id_cap</label>
               <input id="base_id_cap" name="base_id_cap" type="number" value="0" min="0" />
@@ -195,7 +189,6 @@
           <span class="pill">cached: <b id="signals_cached">—</b></span>
           <span class="pill">time: <b id="signals_time">—</b></span>
         </div>
-
         <div class="table-wrap">
           <table id="signalsTable">
             <thead>
@@ -224,10 +217,8 @@
           <span class="pill">limit: <b id="search_limit">—</b></span>
           <span class="pill">time: <b id="search_time">—</b></span>
         </div>
-
         <div class="geo-section">
           <h3 class="section-title">Geographic Distribution</h3>
-
           <div class="map-controls">
             <div class="field inline">
               <label for="mapMetric">Color by:</label>
@@ -238,11 +229,9 @@
               </select>
             </div>
           </div>
-
           <div id="mapLegend" class="map-legend"></div>
           <div id="geoMap" class="us-map"></div>
         </div>
-
         <div class="table-wrap">
           <table id="searchTable">
             <thead>
@@ -273,7 +262,6 @@
           <span class="pill">observations: <b id="onset_obs">—</b></span>
           <span class="pill">time: <b id="onset_time">—</b></span>
         </div>
-
         <div class="panel-controls">
           <div class="field inline">
             <label>Chart type</label>
@@ -284,7 +272,6 @@
             </div>
           </div>
         </div>
-
         <div id="onsetSummary" class="summary"></div>
         <div id="onsetChart" class="bars"></div>
       </div>
@@ -294,7 +281,6 @@
           <span class="pill">N(base): <b id="outcomes_N">—</b></span>
           <span class="pill">time: <b id="outcomes_time">—</b></span>
         </div>
-
         <div class="kpis" id="outcomesKpis"></div>
       </div>
 
@@ -304,13 +290,11 @@
           <span class="pill">points: <b id="trends_points">—</b></span>
           <span class="pill">time: <b id="trends_time">—</b></span>
         </div>
-
         <div class="panel-controls">
           <div class="field inline">
             <label for="trends_clip_months">Last N months (0=all)</label>
-            <input id="trends_clip_months" type="number" min="0" value="0" />
+            <input id="trends_clip_months" type="number" min="0" value="12" />
           </div>
-
           <div class="field inline">
             <label>Chart type</label>
             <div class="trends-chart-toggle">
@@ -320,7 +304,6 @@
             </div>
           </div>
         </div>
-
         <div id="trendsChart" class="bars"></div>
       </div>
 
