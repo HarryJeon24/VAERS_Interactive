@@ -7,7 +7,6 @@ from flask import Blueprint, jsonify, request
 
 from backend.db.mongo import get_db
 from backend.services.filters import build_filters
-from backend.api.signals import _get_base_ids
 
 bp = Blueprint("trends", __name__, url_prefix="/api")
 
@@ -16,7 +15,7 @@ bp = Blueprint("trends", __name__, url_prefix="/api")
 def trends():
     """
     Returns aggregation of reports over time (Monthly).
-    Defaults to last 12 months to prevent UI clutter.
+    Counts ALL matching records (no 50k cap).
     """
     try:
         f, data_match, join_filters = build_filters(request)
@@ -40,9 +39,7 @@ def trends():
                 data_match[flag] = {"$ne": "Y"}
         # ---------------------------
 
-        # DEFAULT CHANGE: Default to 12 months if not specified
-        # If user explicitly sends "0", we respect it (All Time).
-        # If param is missing, we default to 12.
+        # Default to 12 months if not specified
         clip_raw = request.args.get("clip_months")
         if clip_raw is None or clip_raw.strip() == "":
             clip_months = 12
@@ -54,69 +51,51 @@ def trends():
         db = get_db()
         coll = db["vaers_data"]
 
-        # Strategy: Broad Query vs Specific
-        is_broad_query = False
-        if join_filters.get("vax_type") and str(join_filters["vax_type"]).upper() == "COVID19":
-            is_broad_query = True
-
+        # Build Aggregation Pipeline
+        # We ALWAYS use the pipeline approach to ensure we count EVERYTHING.
+        # No 'base_id_cap' limitation for Trends.
         pipeline = []
-        has_complex_join = bool(join_filters)
 
-        if has_complex_join:
-            if is_broad_query:
-                # Direct Pipeline (Safe for massive sets)
-                pipeline.append({"$match": data_match})
-                if join_filters.get("vax_type") or join_filters.get("vax_manu"):
-                    pipeline.append({
-                        "$lookup": {"from": "vaers_vax", "localField": "VAERS_ID", "foreignField": "VAERS_ID",
-                                    "as": "_vax"}
-                    })
-                    v_match = {}
-                    if join_filters.get("vax_type"): v_match["_vax.VAX_TYPE"] = join_filters["vax_type"]
-                    if join_filters.get("vax_manu"): v_match["_vax.VAX_MANU"] = join_filters["vax_manu"]
-                    pipeline.append({"$match": v_match})
+        # 1. Filter by Main Data (Sex, Age, Year, State)
+        pipeline.append({"$match": data_match})
 
-                if join_filters.get("symptom_term"):
-                    term = join_filters["symptom_term"]
-                    pipeline.append({
-                        "$lookup": {"from": "vaers_symptoms", "localField": "VAERS_ID", "foreignField": "VAERS_ID",
-                                    "as": "_sym"}
-                    })
-                    pipeline.append({
-                        "$match": {
-                            "$or": [
-                                {"_sym.SYMPTOM1": term}, {"_sym.SYMPTOM2": term},
-                                {"_sym.SYMPTOM3": term}, {"_sym.SYMPTOM4": term},
-                                {"_sym.SYMPTOM5": term}
-                            ]
-                        }
-                    })
-            else:
-                # ID Fetch (Faster for small sets)
-                base_id_cap = int(request.args.get("base_id_cap", "0") or 0)
-                if base_id_cap == 0: base_id_cap = 50000
+        # 2. Join with Vaccine Table if needed
+        if join_filters.get("vax_type") or join_filters.get("vax_manu"):
+            pipeline.append({
+                "$lookup": {
+                    "from": "vaers_vax",
+                    "localField": "VAERS_ID",
+                    "foreignField": "VAERS_ID",
+                    "as": "_vax"
+                }
+            })
+            v_match = {}
+            if join_filters.get("vax_type"): v_match["_vax.VAX_TYPE"] = join_filters["vax_type"]
+            if join_filters.get("vax_manu"): v_match["_vax.VAX_MANU"] = join_filters["vax_manu"]
+            pipeline.append({"$match": v_match})
 
-                base_ids = _get_base_ids(data_match, join_filters, base_id_cap=base_id_cap)
-                if not base_ids:
-                    return jsonify({"series": [], "points": 0, "N_base": 0, "time_utc": datetime.utcnow().isoformat()})
+        # 3. Join with Symptoms Table if needed
+        if join_filters.get("symptom_term"):
+            term = join_filters["symptom_term"]
+            pipeline.append({
+                "$lookup": {
+                    "from": "vaers_symptoms",
+                    "localField": "VAERS_ID",
+                    "foreignField": "VAERS_ID",
+                    "as": "_sym"
+                }
+            })
+            pipeline.append({
+                "$match": {
+                    "$or": [
+                        {"_sym.SYMPTOM1": term}, {"_sym.SYMPTOM2": term},
+                        {"_sym.SYMPTOM3": term}, {"_sym.SYMPTOM4": term},
+                        {"_sym.SYMPTOM5": term}
+                    ]
+                }
+            })
 
-                pipeline.append({"$match": {"VAERS_ID": {"$in": base_ids}}})
-        else:
-            pipeline.append({"$match": data_match})
-
-        # Count Total (Skip for broad to save time)
-        if is_broad_query:
-            N_base = -1
-        else:
-            try:
-                if pipeline and "$match" in pipeline[0]:
-                    N_base = coll.count_documents(pipeline[0]["$match"])
-                else:
-                    N_base = 0
-            except:
-                N_base = 0
-
-        # Aggregation
+        # 4. Project & Group by Date
         pipeline.extend([
             {
                 "$project": {
@@ -144,16 +123,19 @@ def trends():
             label = f"{y}-{m:02d}"
             series.append({"month": label, "n": item["n"]})
 
-        # Apply Clip (Python side)
+        # Calculate total points BEFORE clipping to get the true "Base N" for this timeline
+        total_points = sum(p["n"] for p in series)
+
+        # Apply Clip (Python side) - show only last N months
         if clip_months > 0:
             series = series[-clip_months:]
 
-        points = sum(p["n"] for p in series)
+        displayed_points = sum(p["n"] for p in series)
 
         return jsonify({
             "series": series,
-            "points": points,
-            "N_base": N_base if N_base != -1 else points,
+            "points": displayed_points,
+            "N_base": total_points,
             "time_utc": datetime.utcnow().isoformat()
         })
 
