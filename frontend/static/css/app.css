@@ -795,3 +795,8 @@ tr:hover td{
   opacity: 0.8;
   font-size: 13px;
 }
+/* Fix visibility of dropdown options on dark backgrounds */
+select option {
+  background-color: #0b1220; /* Matches your var(--bg) */
+  color: rgba(255,255,255,0.92); /* Matches your var(--text) */
+}
