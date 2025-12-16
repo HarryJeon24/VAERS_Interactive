@@ -1,23 +1,23 @@
-blinker @ file:///home/conda/feedstock_root/build_artifacts/blinker_1731096409132/work
-Bottleneck @ file:///opt/miniconda3/conda-bld/bottleneck_1761937851559/work
-click @ file:///home/conda/feedstock_root/build_artifacts/click_1747811314515/work
-dataclasses @ file:///home/conda/feedstock_root/build_artifacts/dataclasses_1628958434797/work
-dnspython @ file:///opt/miniconda3/conda-bld/dnspython_1763718257906/work
-Flask @ file:///home/conda/feedstock_root/build_artifacts/flask_1755674618058/work
-importlib_metadata @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_importlib-metadata_1747934053/work
-itsdangerous @ file:///home/conda/feedstock_root/build_artifacts/itsdangerous_1733308265247/work
-Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jinja2_1764517220/work
-MarkupSafe @ file:///private/var/folders/nz/j6p8yfhx1mv_0grj5xl4650h0000gp/T/abs_1f_uj4vxik/croot/markupsafe_1738584045311/work
-numexpr @ file:///opt/miniconda3/conda-bld/numexpr_1762165519324/work
-numpy @ file:///opt/miniconda3/conda-bld/numpy_and_numpy_base_1763980679152/work/dist/numpy-2.3.5-cp311-cp311-macosx_12_0_arm64.whl#sha256=6af82dbcba097af493ba833c4742b98e3e8f7750ba2dc4623767fce0bf26bf4f
-pandas @ file:///opt/miniconda3/conda-bld/pandas_1762332181524/work/dist/pandas-2.3.3-cp311-cp311-macosx_12_0_arm64.whl#sha256=202df5d53c23cfef62978a56a6ba62db241b6257dcda7ff087a13319aa75ac1f
-pathlib==1.0.1
-pymongo @ file:///opt/miniconda3/conda-bld/pymongo_1764088220088/work
-python-dateutil @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_66ud1l42_h/croot/python-dateutil_1716495741162/work
-python-dotenv @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dotenv_1761503229/work
-pytz @ file:///home/conda/feedstock_root/build_artifacts/pytz_1742920838005/work
-six @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_six_1753199211/work
-tzdata @ file:///home/conda/feedstock_root/build_artifacts/python-tzdata_1742745135198/work
-Werkzeug @ file:///private/var/folders/k1/30mswbxs7r1g6zwn8y4fyt500000gp/T/abs_87am5fxnsf/croot/werkzeug_1737448721856/work
-zipp @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_zipp_1764460141/work
+blinker
+Bottleneck
+click
+dataclasses
+dnspython
+Flask
+importlib_metadata
+itsdangerous
+Jinja2
+MarkupSafe
+numexpr
+numpy
 nltk==3.9.2
+pandas
+pathlib==1.0.1
+pymongo
+python-dateutil
+python-dotenv
+pytz
+six
+tzdata
+Werkzeug
+zipp

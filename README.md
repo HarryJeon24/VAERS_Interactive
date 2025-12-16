@@ -1,377 +1,148 @@
-# VAERS_Interactive
+# VaxScope: VAERS Interactive Explorer
 
-````md
-# VaxScope (VAERS_Interactive)
+**VaxScope** is an interactive analytics dashboard for exploring Vaccine Adverse Event Reporting System (VAERS) data. It provides researchers and the public with tools to search reports, analyze onset intervals, visualize geographic distributions, and detect statistical safety signals using Proportional Reporting Ratio (PRR) algorithms.
 
-VaxScope turns the VAERS public CSVs into a queryable MongoDB dataset and exposes a Flask API + lightweight frontend to explore:
-- **AE–vaccine signal ranking** (PRR/ROR with confidence intervals)
-- **Unified search/filtering** shared across endpoints
-- (Planned) onset distributions, serious outcomes, subgroup comparisons, and time trends
-
-> **Important guardrail:** VAERS is a *passive surveillance* system. Outputs are **hypothesis-generating signals**, not incidence rates and not evidence of causality.
+## ⚠️ Important Disclaimer
+**VAERS is a passive reporting system.** Reports found in this tool do not prove causality. A report of an adverse event to VAERS does not guarantee that a vaccine caused the event. This tool is intended for hypothesis generation and data exploration only.
 
 ---
 
-## Current Status (What’s Done vs Planned)
+## Project Structure
 
-### ✅ Implemented
-Backend
-- Flask app bootstrapped and serving API + frontend
-- MongoDB connector
-- Shared filter builder (`services/filters.py`)
-- TTL caching helper (`services/cache.py`)
-- `/api/search` endpoint
-- `/api/signals` endpoint (PRR/ROR with continuity correction + CIs)
-- Subsample maker + loader scripts (load typed data + build indexes)
-
-Frontend
-- Single-page UI (`frontend/templates/index.html`) with JS (`frontend/static/js/signal.js`) + CSS (`frontend/static/css/app.css`) for signals exploration
-
-### 🔜 Planned (Teammates can pick these up)
-- `/api/onset` + onset histogram pipeline (NUMDAYS derived from `ONSET_DATE - VAX_DATE`)
-- `/api/outcomes` serious outcome proportions (DIED/HOSPITAL/L_THREAT/DISABLE/RECOVD)
-- `/api/subgroup` stratified summaries (by VAX_MANU, VAX_DOSE_SERIES, AGE_YRS bands, SEX)
-- `/api/trends` monthly/seasonal trends (ONSET_DATE/RECVDATE)
-
----
-
-## Repo Structure (Lean)
+This overview highlights the core source code, excluding virtual environment and cache files:
 
 ```text
 VAERS_Interactive/
-  backend/
-    app.py
-    config.py
-    requirements.txt
-    api/
-      search.py
-      signals.py
-    db/
-      mongo.py
-    services/
-      filters.py
-      cache.py
-    scripts/
-      make_subsample.py
-      load_subsample.py
-  frontend/
-    templates/
-      index.html
-    static/
-      css/app.css
-      js/signal.js
-  data/
-    raw/          # VAERS yearly CSVs (not tracked in git)
-    subsample/    # devVAERS*.csv outputs (not tracked in git)
-  docs/
-    VAERSDataUseGuide_en_March2025.pdf
-````
+├── backend/
+│   ├── api/                 # Flask Blueprints (Endpoints)
+│   │   ├── search.py        # Search logic & filtering
+│   │   ├── signals.py       # PRR/ROR Statistical calculations
+│   │   ├── trends.py        # Time-series analysis
+│   │   ├── onset.py         # Onset interval analysis
+│   │   ├── outcomes.py      # Outcome severity KPIs
+│   │   └── ...
+│   ├── db/                  # Database connection logic (MongoDB)
+│   ├── scripts/             # ETL & Data Preprocessing
+│   │   ├── load_full.py     # Script to load CSV data into MongoDB
+│   │   └── text_normalizer.py
+│   ├── services/            # Helper services (Cache, Query Filters)
+│   ├── app.py               # Main Flask Application entry point
+│   └── requirements.txt     # Python dependencies
+├── data/
+│   └── processed/           # Cleaned CSV/JSON data files
+├── docs/                    # User Manuals and Data Guides
+├── frontend/
+│   ├── static/              # Assets
+│   │   ├── css/app.css      # Styling
+│   │   └── js/app.js        # Frontend logic (D3.js charts, filters)
+│   └── templates/
+│       └── index.html       # Main Dashboard HTML
+├── .env                     # Database credentials (Not verified in git)
+└── README.md
 
 ---
 
-## What Preprocessing We Already Do (So You Don’t Need to Reload)
+## Prerequisites
 
-When loading the subsample CSVs into MongoDB, we already:
+Before running this application, ensure you have the following installed:
 
-* Trim whitespace; convert empty strings to `null`
-* Parse types:
-
-  * `VAERS_ID`, `YEAR` → integer
-  * `AGE_YRS`, `NUMDAYS` → float
-  * `VAX_DATE`, `ONSET_DATE`, `RECVDATE`, `RPT_DATE`, `DATEDIED` → datetime
-* Upsert in batches to avoid duplicates
-* Create indexes on key fields (VAERS_ID, dates, demographics, vaccine fields, symptoms)
-
-We did NLP cleaning of text narratives for lab data, other med, cur_illl, history, previous_vax, allergies, check backend/scripts for more information.
+- **Python 3.11+**
+- **MongoDB Access:** You must have connection details for a MongoDB instance (Local or Cloud) containing the VAERS dataset.
 
 ---
 
-## Requirements
+## Installation & Setup
 
-* Python 3.10+ (3.11 is fine)
-* MongoDB (local or Atlas)
-* Disk space for VAERS CSVs (raw data is large)
-
----
-
-## Setup Instructions (Teammate Onboarding)
-
-### 1) Clone and create a virtual environment
+### 1. Environment Setup
+Clone the repository and create a virtual environment to keep dependencies isolated:
 
 ```bash
-git clone <YOUR_REPO_URL>
-cd VAERS_Interactive
+# Windows
+python -m venv venv
+venv\Scripts\activate
 
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-```
+# Mac/Linux
+python3 -m venv venv
+source venv/bin/activate
 
-### 2) Install backend dependencies
+---
+### 2. Install Dependencies
+Install the required packages listed in the backend folder:
 
 ```bash
 pip install -r backend/requirements.txt
-```
-
-### 3) Create a `.env` file at the repo root
-
-Create `VAERS_Interactive/.env`:
-
-```env
-# Which year files to include (comma-separated)
-VAERS_DEV_YEARS=2016,2018,2023
-
-# Sample sizes PER YEAR (join-safe by VAERS_ID)
-VAERS_DEV_N_RANDOM=10000
-VAERS_DEV_N_SERIOUS=2000
-
-# If true, merges years into one dev*.csv and adds YEAR column
-VAERS_DEV_COMBINE=true
-VAERS_DEV_PREFIX=dev
-
-# CSV streaming chunksize (bigger = faster, higher RAM)
-VAERS_DEV_CHUNKSIZE=200000
-
-# Optional: ensure these VAX_TYPEs have enough distinct VAERS_IDs
-# (comma-separated, can be blank)
-VAERS_DEV_ENSURE_VAX_TYPES=COVID19,FLU,TDAP
-VAERS_DEV_MIN_PER_VAX_TYPE=800
-VAERS_CSV_ENCODING=cp1252
-
-MONGO_URI=mongodb://localhost:27017
-MONGO_DB=vaers_dev
-
-```
-
-> If you use MongoDB Atlas, set `MONGO_URI` to the Atlas connection string.
-
-### 4) Prepare VAERS CSV data
-
-Put VAERS raw files into:
-
-```text
-data/raw/
-  2024VAERSDATA.csv
-  2024VAERSVAX.csv
-  2024VAERSSYMPTOMS.csv
-  ...
-```
-
-You can also include:
-
-* `NonDomesticVAERSDATA.csv`, `NonDomesticVAERSVAX.csv`, `NonDomesticVAERSSYMPTOMS.csv`
-
-> The repo should not track these files in git. Keep them local.
 
 ---
+### 3. Database Configuration
+Create a `.env` file in the root directory and add your MongoDB connection string as `MONGO_URI`. Refer to the User Manual in the `docs/` folder for the required credentials and setup details.
 
-## Running the Project (Dev)
+---
+## Running the Application
 
-### Step A) Make a subsample (recommended for development)
-
-This generates:
-
-* `data/subsample/devVAERSDATA.csv`
-* `data/subsample/devVAERSVAX.csv`
-* `data/subsample/devVAERSSYMPTOMS.csv`
-
-Run:
-
-```bash
-python backend/scripts/make_subsample.py
-```
-
-If your script accepts args (sample size / years), see the top of the file or modify constants inside.
-
-### Step B) Load the subsample into MongoDB
-
-```bash
-python backend/scripts/load_subsample.py
-```
-
-This will:
-
-* parse types
-* upsert documents
-* create indexes
-
-### Step C) Start the Flask server
+To start the server, run the main Flask application file from the project root:
 
 ```bash
 python backend/app.py
-```
-
-By default, open the app in your browser:
-
-* Frontend: `http://127.0.0.1:5000/`
-* API:
-
-  * `http://127.0.0.1:5000/api/search`
-  * `http://127.0.0.1:5000/api/signals`
 
 ---
-
-## How to Use the UI
-
-* Open `http://127.0.0.1:5000/`
-* Use the filter panel (vaccine type/manufacturer, symptom, age/sex, date range, etc.)
-* The signals table should populate and allow sorting
-
-If signals show nothing:
-
-* confirm Mongo is running and `MONGO_URI/MONGO_DB` are correct
-* confirm you loaded the subsample
-* confirm the `vaers_data`, `vaers_vax`, `vaers_symptoms` collections exist
+Open your web browser and navigate to: http://127.0.0.1:5002
 
 ---
-
-## API Overview
-
-### `/api/search`
-
-Purpose:
-
-* Unified filtering and basic exploration. Returns matching events/docs for the UI.
-
-Inputs:
-
-* Filter params (vaccine type/manufacturer, symptom term(s), age, sex, state, date ranges, etc.)
-
-### `/api/signals`
-
-Purpose:
-
-* Compute PRR/ROR (with continuity correction and confidence intervals) for vaccine–symptom pairs under current filters.
-
-Notes:
-
-* Uses the shared filter builder
-* Uses caching to reduce repeated heavy aggregations
-
 ---
 
-## Development Conventions
+## Features & Usage Guide
 
-### Where to add new features
+### 1. Search Tab (Discovery)
+**Goal:** Find specific individual reports or geographic hotspots.
 
-* Add endpoint in `backend/api/<feature>.py`
-* Reuse `services/filters.py` to respect the same filter semantics everywhere
-* Keep “math / metrics” as pure functions where possible for testability
+**Visuals:** The US Map updates automatically to show report density. The table lists individual cases with symptom text snippets.
 
-### Common gotchas
+**Key Filters:** State, Year, Symptom Term.
 
-* Symptom term matching is sensitive to exact strings if using direct equality matches.
-* Large aggregations can be slow on full data without careful indexes.
-* If you add new derived fields, prefer:
+### 2. Onset Tab (Temporal Causality)
+**Goal:** Analyze the time lag (days) between vaccination and symptom onset.
 
-  1. pipeline-time computation first (no DB rewrite)
-  2. then targeted in-place backfill if performance becomes an issue
+**Filters:** Use Onset Days Min/Max to focus on immediate vs. delayed reactions.
 
----
+**Interpretation:** Spikes at Day 0 or 1 often indicate immediate reactogenicity (e.g., pain, fever).
 
-## Team Task Board (Pick One)
+### 3. Outcomes Tab (Severity Analysis)
+**Goal:** View the breakdown of serious outcomes (Death, Hospitalization, Disability).
 
-### Backend Tasks
+**Context:** Filter by Year and Age Group to see how severity profiles change across populations.
 
-1. **Onset endpoint** (`/api/onset`)
+### 4. Trends Tab (Longitudinal)
+**Goal:** Spot reporting volume spikes over months or years.
 
-* Compute `NUMDAYS = ONSET_DATE - VAX_DATE` in pipeline
-* Return histogram buckets + summary stats
-* Ensure missing dates are handled safely
+**Visualization:** Interactive bar/line charts showing report counts over time.
 
-2. **Outcomes endpoint** (`/api/outcomes`)
+**Control:** Use "Last N Months" to zoom into recent data.
 
-* Group by vaccine/manufacturer or demographic strata
-* Return numerator/denominator for DIED/HOSPITAL/L_THREAT/DISABLE/RECOVD
+### 5. Signals Tab (Statistical Detection)
+**Goal:** Detect disproportionate reporting of specific symptoms for specific vaccines.
 
-3. **Subgroup endpoint** (`/api/subgroup`)
+**Auto-Optimization:** When you switch to this tab, filters for Vaccine Type, Manufacturer, and Symptom Term are automatically hidden. This is intentional to ensure the statistical "background comparison group" remains intact (preventing the "Universe Trap").
 
-* Stratify by:
-
-  * vaccine manufacturer (`VAX_MANU`)
-  * dose series (`VAX_DOSE_SERIES`)
-  * age bands and sex
-* Return counts + proportions for side-by-side comparisons
-
-4. **Trends endpoint** (`/api/trends`)
-
-* Monthly counts by `ONSET_DATE` (and optionally `RECVDATE`)
-* Optional stratification (vaccine type, manufacturer, symptom)
-
-5. **Index management**
-
-* Add a unified `backend/db/indexes.py` that creates exactly the indexes we rely on
-* Document which indexes are required for which endpoints
-
-### Frontend Tasks
-
-1. Add nav/tabs for:
-
-* Signals (already done)
-* Onset
-* Outcomes
-* Subgroup
-* Trends
-
-2. Add charts:
-
-* histogram for onset
-* stacked bars for outcomes
-* line chart for trends
-
-3. Add guardrails UX:
-
-* visible disclaimers on every view
-* tooltips for PRR/ROR interpretation
-
----
-
-## Testing (Optional but Recommended)
-
-* Keep unit tests for:
-
-  * filter building correctness
-  * PRR/ROR math edge cases (zero counts, continuity correction, CI behavior)
-
-Example usage (if using pytest):
-
-```bash
-pytest -q
-```
+**Visualization:**
+- **X-Axis:** Frequency (Count).
+- **Y-Axis:** PRR (Signal Strength).
+- **Red Bubbles:** Statistically significant signals (Lower CI > 1).
 
 ---
 
 ## Troubleshooting
 
-### Mongo connection errors
+### ServerSelectionTimeoutError / [WinError 10061]
+The application cannot reach the MongoDB server.
 
-* Verify Mongo is running:
+**Fix:** Check your internet connection. If using a cloud database (GCP/Atlas), ensure your current IP Address is whitelisted in the cloud provider's firewall settings.
 
-  * local: `mongod`
-  * Atlas: IP allowlist + correct URI
-* Validate `.env` values
+### BSON document too large
+You are trying to request too much data at once.
 
-### Very slow signals
-
-* Confirm indexes exist
-* Reduce filter scope (use smaller year range)
-* Use subsample for dev
-
-### Empty results
-
-* Confirm data loaded into the correct DB name
-* Confirm CSV columns exist and were parsed (especially date fields)
+**Fix:** Use the sidebar filters (e.g., Year, State, or limit) to narrow your query.
 
 ---
 
-## License / Data Notes
-
-* VAERS data is public and comes with usage guidance; see `docs/VAERSDataUseGuide_en_March2025.pdf`.
-* VaxScope provides analytical tooling, not medical advice.
-
----
-
-```
-```
+## License
+MIT
