@@ -207,4 +207,7 @@ marimo/_lsp/
 __marimo__/
 
 data
+migrate_db.py
+export_to_json.py
+export_to_json_resume.py
 .gitignore
