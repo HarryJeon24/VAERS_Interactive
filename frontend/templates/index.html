@@ -97,12 +97,12 @@
           </select>
         </div>
 
-        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
+        <div class="field" data-tabs="search,onset,outcomes,trends">
           <label for="vax_type" title="Vaccine Type abbreviation (e.g., COVID19, FLU, MMR).">Vaccine Type ⓘ</label>
           <input id="vax_type" name="vax_type" type="text" placeholder="e.g., COVID19" />
         </div>
 
-        <div class="field" data-tabs="signals,search,onset,outcomes,trends">
+        <div class="field" data-tabs="search,onset,outcomes,trends">
           <label for="vax_manu" title="Vaccine Manufacturer (e.g., PFIZER, MODERNA).">Manufacturer ⓘ</label>
           <input id="vax_manu" name="vax_manu" type="text" placeholder="e.g., PFIZER" />
         </div>
@@ -163,10 +163,6 @@
               <label for="cc">Continuity corr (cc)</label>
               <input id="cc" name="cc" type="number" value="0.5" step="0.1" min="0" />
             </div>
-            <div class="field">
-              <label for="base_id_cap">base_id_cap</label>
-              <input id="base_id_cap" name="base_id_cap" type="number" value="0" min="0" />
-            </div>
           </div>
         </div>
 
@@ -189,21 +185,34 @@
           <span class="pill">cached: <b id="signals_cached">—</b></span>
           <span class="pill">time: <b id="signals_time">—</b></span>
         </div>
-        <div class="table-wrap">
+
+        <div class="panel-controls">
+            <div class="field inline">
+              <label>View</label>
+              <div class="onset-chart-toggle">
+                <button type="button" class="signals-view-btn active" data-view="table">Table</button>
+                <button type="button" class="signals-view-btn" data-view="chart">Chart</button>
+              </div>
+            </div>
+        </div>
+
+        <div id="signalsChart" class="bars" style="display:none; height: 400px;"></div>
+
+        <div id="signalsTableWrap" class="table-wrap">
           <table id="signalsTable">
             <thead>
               <tr>
                 <th>VAX_TYPE</th>
                 <th>VAX_MANU</th>
                 <th>SYMPTOM</th>
-                <th>a</th>
-                <th>b</th>
-                <th>c</th>
-                <th>d</th>
-                <th>PRR</th>
-                <th>PRR CI</th>
-                <th>ROR</th>
-                <th>ROR CI</th>
+                <th title="Reports with Vaccine + Symptom">a</th>
+                <th title="Reports with Vaccine, NO Symptom">b</th>
+                <th title="Reports with Symptom, NO Vaccine">c</th>
+                <th title="Reports with neither">d</th>
+                <th title="Proportional Reporting Ratio">PRR</th>
+                <th title="95% Confidence Interval">PRR CI</th>
+                <th title="Reporting Odds Ratio">ROR</th>
+                <th title="95% Confidence Interval">ROR CI</th>
               </tr>
             </thead>
             <tbody id="signalsTbody"></tbody>

@@ -159,6 +159,7 @@ class Autocomplete {
   let activeTab = localStorage.getItem("vaxscope_active_tab") || "signals";
   let trendsChartType = localStorage.getItem("vaxscope_trends_chart_type") || "hbar";
   let onsetChartType = localStorage.getItem("vaxscope_onset_chart_type") || "hbar";
+  let signalsView = localStorage.getItem("vaxscope_signals_view") || "table";
 
   function setStatus(msg, type = "info") {
     statusEl.textContent = msg;
@@ -180,6 +181,7 @@ class Autocomplete {
       p.hidden = !on;
     });
 
+    // Toggle visibility of filters based on data-tabs attribute in HTML
     const filterFields = $$('[data-tabs]');
     filterFields.forEach(el => {
       const allowedTabs = el.dataset.tabs.split(',').map(t => t.trim());
@@ -271,11 +273,44 @@ class Autocomplete {
   // ---------- Render Functions ----------
 
   function renderSignals(data) {
+    if (typeof window !== "undefined") window._signalsLastData = data;
     $("#signals_N").textContent = data?.N ?? "0";
     $("#signals_cached").textContent = String(data?.cached ?? "false");
     $("#signals_time").textContent = data?.time_utc ?? "";
+
+    // 1. Inject Top 3 Symptoms Context Summary
+    let summary = $("#signalsSummary");
+    // Ensure the container exists in DOM if not present (defensive)
+    if (!summary) {
+        const container = $(".panel[data-tab-panel='signals'] .panel-controls");
+        if(container) {
+            summary = document.createElement("div");
+            summary.id = "signalsSummary";
+            summary.className = "summary";
+            container.parentNode.insertBefore(summary, container.nextSibling);
+        }
+    }
+
+    if (summary) {
+        if (data.top_symptoms && data.top_symptoms.length > 0) {
+            const items = data.top_symptoms.map(s => `<b>${escapeHtml(s.symptom)}</b> (${num(s.count)})`).join(", ");
+            summary.innerHTML = `<div class="pill" style="width:100%; justify-content: flex-start;">Most frequent events in this group: &nbsp; ${items}</div>`;
+            summary.style.display = "flex";
+        } else {
+            summary.style.display = "none";
+        }
+    }
+
+    // 2. Render Table
     const tbody = $("#signalsTbody");
     tbody.innerHTML = "";
+
+    // Helper to format Confidence Intervals nicely
+    const fmtCI = (ci) => {
+        if (!ci || !Array.isArray(ci) || ci.length < 2) return "—";
+        return `${num(ci[0], 2)} – ${num(ci[1], 2)}`;
+    };
+
     const rows = data?.rows || [];
     for (const r of rows) {
       const tr = document.createElement("tr");
@@ -288,14 +323,148 @@ class Autocomplete {
         <td>${num(r.c)}</td>
         <td>${num(r.d)}</td>
         <td>${num(r.prr, 3)}</td>
-        <td>${escapeHtml(r.prr_ci ?? "")}</td>
+        <td>${fmtCI(r.prr_ci)}</td>
         <td>${num(r.ror, 3)}</td>
-        <td>${escapeHtml(r.ror_ci ?? "")}</td>
+        <td>${fmtCI(r.ror_ci)}</td>
       `;
       tbody.appendChild(tr);
     }
+
+    // 3. Render Chart
+    renderSignalsChart(rows);
+
     setStatus(`Signals loaded: ${rows.length} rows (N=${data?.N ?? 0}).`, "ok");
+    updateSignalsView();
   }
+
+  // D3 SCATTER PLOT
+  function renderSignalsChart(rows) {
+    const container = $("#signalsChart");
+    if (!container) return;
+    container.innerHTML = "";
+    if (!rows || rows.length === 0) {
+      container.innerHTML = '<div class="autocomplete-no-results">No data to chart.</div>';
+      return;
+    }
+
+    if (typeof d3 === 'undefined') { container.innerHTML = 'D3.js not loaded.'; return; }
+
+    const margin = {top: 20, right: 20, bottom: 50, left: 60};
+    const width = container.clientWidth - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = d3.select(container).append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // X Axis: Log Scale for Count (a)
+    const xMin = d3.min(rows, d => d.a) || 1;
+    const xMax = d3.max(rows, d => d.a) || 10;
+    const x = d3.scaleLog().domain([xMin, xMax]).range([0, width]).nice();
+
+    // Y Axis: Linear Scale for PRR
+    const yMax = d3.max(rows, d => d.prr) || 2;
+    const y = d3.scaleLinear().domain([0, yMax]).range([height, 0]).nice();
+
+    // Axes
+    svg.append("g")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5, "~s"))
+        .style("color", "var(--text-muted)");
+
+    svg.append("g")
+        .call(d3.axisLeft(y))
+        .style("color", "var(--text-muted)");
+
+    // Labels
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", height + 35)
+        .style("text-anchor", "middle")
+        .style("fill", "var(--text-muted)")
+        .style("font-size", "12px")
+        .text("Report Frequency (Count 'a') - Log Scale");
+
+    svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", -45)
+        .attr("x", -height/2)
+        .style("text-anchor", "middle")
+        .style("fill", "var(--text-muted)")
+        .style("font-size", "12px")
+        .text("Signal Strength (PRR)");
+
+    // Reference Line at PRR=1 (Neutral)
+    if (y(1) < height && y(1) > 0) {
+        svg.append("line")
+            .attr("x1", 0).attr("x2", width)
+            .attr("y1", y(1)).attr("y2", y(1))
+            .attr("stroke", "var(--line)")
+            .attr("stroke-dasharray", "4,4");
+    }
+
+    const tooltip = d3.select("body").append("div").attr("class", "map-tooltip").style("opacity", 0);
+
+    // Bubbles
+    svg.selectAll("circle")
+      .data(rows)
+      .join("circle")
+        .attr("cx", d => x(d.a))
+        .attr("cy", d => y(d.prr || 0))
+        .attr("r", 6)
+        .attr("fill", d => {
+            const lowerCI = d.prr_ci ? d.prr_ci[0] : 0;
+            // Red if Signal is Significant (Lower CI > 1), else Grey
+            return lowerCI > 1 ? "#ef4444" : "#64748b";
+        })
+        .attr("opacity", 0.75)
+        .attr("stroke", "#fff").attr("stroke-width", 1)
+        .on("mouseover", (event, d) => {
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`
+                <div style="font-weight:700; color:var(--primary)">${d.symptom}</div>
+                <div style="font-size:11px; margin-bottom:4px">${d.vax_type} (${d.vax_manu})</div>
+                <div class="tooltip-stat">PRR: <b>${num(d.prr, 2)}</b></div>
+                <div class="tooltip-stat" style="font-size:10px; color:var(--text-muted)">95% CI: ${d.prr_ci ? num(d.prr_ci[0],2) + " - " + num(d.prr_ci[1],2) : "?"}</div>
+                <div class="tooltip-stat">Count: ${d.a}</div>
+            `)
+            .style("left", (event.pageX + 12) + "px")
+            .style("top", (event.pageY - 28) + "px");
+        })
+        .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0));
+  }
+
+  function updateSignalsView() {
+    const tableWrap = $("#signalsTableWrap");
+    const chartDiv = $("#signalsChart");
+    const btns = $$(".signals-view-btn");
+
+    btns.forEach(b => {
+      if (b.dataset.view === signalsView) b.classList.add("active");
+      else b.classList.remove("active");
+    });
+
+    if (signalsView === "chart") {
+      tableWrap.style.display = "none";
+      chartDiv.style.display = "block";
+      // Re-render chart if data exists to fit container
+      if(window._signalsLastData) renderSignalsChart(window._signalsLastData.rows);
+    } else {
+      tableWrap.style.display = "block";
+      chartDiv.style.display = "none";
+    }
+  }
+
+  // Setup Signal View Toggles
+  $$(".signals-view-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      signalsView = btn.dataset.view;
+      localStorage.setItem("vaxscope_signals_view", signalsView);
+      updateSignalsView();
+    });
+  });
 
   function renderSearch(data) {
     $("#search_count").textContent = data?.count ?? "0";
@@ -477,7 +646,6 @@ class Autocomplete {
     setStatus(`Trends loaded.`, "ok");
   }
 
-  // FIXED: Added Label Skipping Logic
   function renderLineChart(container, points, maxN) {
     const svgNS = "http://www.w3.org/2000/svg";
     const width = 700, height = 260;

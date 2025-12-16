@@ -89,8 +89,8 @@ def _get_base_ids(
         base_id_cap: int = 0,
 ) -> List[int]:
     """
-    Build base universe VAERS_IDs.
-    UPDATED: Now includes aggregation logic to filter by Onset Days.
+    Build base universe VAERS_IDs from vaers_data.
+    Uses aggregation pipeline if Onset Days filtering is required.
     """
     db = get_db()
 
@@ -146,7 +146,7 @@ def _get_base_ids(
             query = query.limit(int(base_id_cap))
         return [doc["VAERS_ID"] for doc in query if doc.get("VAERS_ID") is not None]
 
-    # Strategy B: Onset Filter -> Use Aggregation Pipeline (Slower but necessary)
+    # Strategy B: Onset Filter -> Use Aggregation Pipeline
     else:
         pipeline = [{"$match": final_match}]
 
@@ -278,7 +278,7 @@ def signals():
     /api/signals
     Calculates statistical signals (PRR, ROR).
     Filters: Standard, Manual, AND Onset Days.
-    Safety: Enforces 50k hard cap.
+    Safety: ENFORCES 50k hard cap.
     """
     f, data_match, join_filters = build_filters(request)
 
@@ -301,7 +301,7 @@ def signals():
             data_match[flag] = {"$ne": "Y"}
     # ------------------------------
 
-    # 2. Extract Onset Filters (Missing Link Fixed)
+    # 2. Extract Onset Filters
     onset_min_raw = request.args.get("onset_days_min", "").strip()
     onset_max_raw = request.args.get("onset_days_max", "").strip()
 
@@ -330,10 +330,12 @@ def signals():
     if sort_by not in ("prr", "ror", "a"):
         sort_by = "prr"
 
-    base_id_cap = 50000  # Hard safety limit
+    # HARD SAFETY LIMIT
+    # We ignore user input here to guarantee stability.
+    base_id_cap = 50000
 
     cache_key = stable_hash({
-        "endpoint": "signals_v4",
+        "endpoint": "signals_v5",
         "args": request.args.to_dict(flat=True),
         "hard_cap": base_id_cap
     })
@@ -367,6 +369,7 @@ def signals():
         sym_marg = _build_sym_marginals(base_ids, join_filters)
         pair_docs = _build_pairs(base_ids, join_filters)
 
+        # Build Top 3 Symptoms for Context
         top_symptoms: List[Dict[str, Any]] = []
         if not join_filters.get("symptom_term"):
             sorted_symptoms = sorted(sym_marg.items(), key=lambda x: x[1], reverse=True)[:3]
